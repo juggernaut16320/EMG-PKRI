@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Conda
+.conda/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Data files
+# 排除未处理的原始数据（太大）
+data/unprocessed/
+data/unprocessed/*
+
+# 排除中间数据文件（可以重新生成，不需要版本控制）
+data/dataset_raw.jsonl
+data/dataset_cleaned.jsonl
+data/dataset_with_coarse.jsonl
+
+# 保留训练必需的数据集（train/dev/test）
+# 这些文件会被 Git 跟踪
+
+# Keep data directory structure but ignore unprocessed files
+!data/unprocessed/.gitkeep
+
+# Model checkpoints (训练产生的，不需要版本控制)
+checkpoints/
+checkpoints/*
+
+# Temporary files
+*.tmp
+*.log
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+

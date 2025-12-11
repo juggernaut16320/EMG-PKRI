@@ -1,0 +1,104 @@
+# EMG-PKRI 项目配置文件
+
+# 环境配置
+# 使用前请先激活 conda 环境: conda activate emgpkri
+conda_env: "emgpkri"
+
+# 数据目录
+data_dir: "./data"
+output_dir: "./output"
+
+# LLM 后端配置
+# 锁定使用：gemma-3-27b-it (30 RPM, 14.4K RPD, 15K TPM) 适合大批量打标
+teacher_backends:
+  - "gemma-3-27b-it"
+
+student_backend: "gemma-3-27b-it"
+
+# LLM 调用参数
+llm:
+  batch_size: 10  # 批量处理大小（>1时使用批量处理，可大幅减少API调用次数）
+  max_retries: 3
+  retry_delay: 1.0
+  timeout: 30
+  request_interval: 2.5  # 请求间隔（秒），确保不超过RPM限制（30 RPM = 2秒/请求，使用2.5秒留有余量）
+
+# 子标签体系
+subtypes:
+  - "porn"
+  - "politics"
+  - "abuse"
+  - "other"
+
+# 数据划分比例
+split:
+  train: 0.8
+  dev: 0.1
+  test: 0.1
+  random_seed: 42  # 固定随机种子，确保可复现（一旦确定，不再改变）
+
+# 困难子集配置
+hardset:
+  min_size: 500
+  max_size: 2000
+  confidence_threshold: 0.8
+
+# 模型配置（Day2）
+model:
+  name_or_path: "Qwen/Qwen3-1.7B"  # 或 Qwen/Qwen3-0.5B
+  max_length: 512                      # 最大序列长度
+
+# LoRA 配置（Day2）
+lora:
+  r: 8                                 # LoRA rank
+  alpha: 16                            # LoRA alpha
+  dropout: 0.1                         # LoRA dropout
+  target_modules: ["q_proj", "v_proj"] # 目标模块
+
+# 训练配置（Day2）
+training:
+  train_file: "train.jsonl"           # 训练集文件（相对于 data_dir）
+  dev_file: "dev.jsonl"                # 验证集文件（相对于 data_dir）
+  output_dir: "checkpoints/baseline-lora"  # 输出目录
+  num_epochs: 3                        # 训练轮数
+  per_device_train_batch_size: 8       # 训练批次大小
+  per_device_eval_batch_size: 16       # 验证批次大小
+  learning_rate: 2e-4                  # 学习率
+  warmup_steps: 100                    # Warmup 步数
+  logging_steps: 50                    # 日志记录步数
+  eval_steps: 200                      # 评估步数
+  save_steps: 400                      # 保存 checkpoint 步数（必须是 eval_steps 的倍数）
+  save_strategy: "steps"               # 保存策略
+  evaluation_strategy: "steps"         # 评估策略
+  load_best_model_at_end: true        # 训练结束时加载最优模型
+  metric_for_best_model: "f1"         # 最优模型指标（f1/loss/accuracy）
+  greater_is_better: true              # F1 越大越好
+  save_total_limit: 3                  # 最多保存的 checkpoint 数量
+  seed: 42                             # 随机种子
+
+# 数据清洗配置
+data_cleaning:
+  # 基础过滤
+  min_length: 5              # 最小字符数
+  # max_length: null         # 最大字符数（无限制，不设置此字段）
+  remove_empty: true         # 移除空文本
+  
+  # URL处理
+  url_handling: "replace"    # 替换为占位符
+  url_placeholder: "[URL]"   # URL占位符
+  
+  # @提及处理
+  mention_handling: "replace" # 替换为占位符
+  mention_placeholder: "[MENTION]"  # @提及占位符
+  
+  # 转发处理
+  retweet_handling: "extract" # 提取转发内容
+  retweet_patterns:          # 转发标记模式
+    - "RT @"
+    - "转发 @"
+    - "Retweet @"
+  
+  # 去重
+  deduplication:
+    exact: true              # 精确去重（基于MD5哈希）
+

@@ -4,6 +4,7 @@
 
 1. **Conda 环境 + requirements**
    - 用 `conda create -n emgpkri python=3.10` 建环境；
+   - **每次开发前务必激活环境**：`conda activate emgpkri`
    - 所有依赖写在 `requirements.txt`，本地 & 云端统一。
 2. **代码容器化友好**
    - 所有脚本：
@@ -14,11 +15,10 @@
      - `pip install -r requirements.txt`
      - 挂载 `/app/data`
      - 执行脚本命令即可。
-3. **Gemini / GPT API 打通**
+3. **Gemini API 调用**
    - 在 `.env` / 云平台环境变量里配置：
-     - `GEMINI_API_KEY`
-     - `OPENAI_API_KEY`
-   - `llm_labeler.py` 里统一封装 `call_llm_backend`，支持多模型共识。
+     - `GEMINI_API_KEY`（必需）
+   - `llm_labeler.py` 里统一封装 `call_llm_backend`，当前锁定使用 `gemma-3-27b` 模型。
 4. **阿里云部署路径打通**
    - 仓库结构、`requirements.txt`、`config.yaml`、相对路径 → 直接适配「自定义镜像 + 命令行」风格的部署（例如：阿里云 ECI / 容器服务）。
 
@@ -46,6 +46,22 @@ project/
 │   └── config.yaml        # 路径、模型名、后端等统一配置
 ├── requirements.txt
 └── .env.example           # API key 示例（不提交真实密钥）
+```
+
+## 快速开始
+
+```bash
+# 1. 激活 conda 环境（必须）
+conda activate emgpkri
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置环境变量（复制 .env.example 为 .env 并填入 API Key）
+cp .env.example .env
+
+# 4. 运行测试
+python -m pytest tests/ -v
 ```
 
 通用约定：
@@ -83,25 +99,30 @@ project/
 
 **工作内容：**
 
+- **TXT 转 JSONL**：将 `unprocessed` 目录下的多个 txt 文件转换为 JSONL 格式，使用 `s0`, `s1`, `s2` 等格式的 ID
 - 清洗 `dataset_raw.jsonl`：去重、空文本、乱码、极短文本、明显噪声。
 - **主任务标签（coarse）：敏感 / 非敏感**
-  - 用多大模型 API 共识打 `label ∈ {0,1}`（non_sensitive / sensitive）。
+  - 使用 `gemma-3-27b` 模型打 `label ∈ {0,1}`（non_sensitive / sensitive）。
 - **子标签（subtypes，多标签）：**
   - 体系：`["porn", "politics", "abuse", "other"]`（可多选）。
   - 只作为**附加信息**和后续知识/分析使用，**不进 Day2 训练 loss**。
 - 按 8/1/1 做 `train/dev/test` 划分（stratify=coarse label）。
-- 基于 teacher–student 分歧构造 `hard_eval_set`（500–2000 条）：
-  - teacher：大模型 API；
-  - student：当前简单 Qwen zero-shot；
-  - 抽“teacher 正确 + student 高置信错误”等难例。
+- 基于模型预测分歧构造 `hard_eval_set`（500–2000 条）：
+  - 使用 `gemma-3-27b` 模型进行打标；
+  - 抽"高置信但可能错误的样本"等难例。
 
 **工程/容器化约定：**
 
 - 所有脚本从 `configs/config.yaml` 读取：
 
   - `data_dir`（默认 `./data`，云端挂载 `/app/data` 也只改 config）；
-  - `teacher_backends`（如 `["gpt-4o", "gemini-1.5-pro"]`）；
-  - `student_backend`（如 `qwen-1.7b-zero-shot`）。
+  - `batch_size`、`max_retries` 等参数。
+
+- LLM 模型：
+
+  - 当前锁定使用 `gemma-3-27b-it`（30 RPM，14.4K RPD，15K TPM，适合大批量打标）。
+  - 支持批量处理（默认 batch_size=10），将多条数据打包传给大模型，大幅减少 API 调用次数。
+  - 自动处理速率限制（默认请求间隔 2.5 秒）。
 
 - 所有输入输出文件路径写成：
 
@@ -114,10 +135,11 @@ project/
 **增量数据说明：**
 
 - 后续新增数据时，只需：
-  1. 对新 raw 数据再跑一遍 `data_cleaner.py`、`coarse_label.py`、`subtype_assign.py`；
-  2. 把旧 `with_coarse_and_subtypes.jsonl` 与新数据合并；
-  3. 重新跑 `dataset_split.py` & `hardset_maker.py`。
-- 代码逻辑不用改，**Day1 全部脚本设计成“对输入文件无状态处理”**，方便反复重跑。
+  1. 将新的 txt 文件放入 `data/unprocessed` 目录，运行 `txt_to_jsonl.py` 自动追加到 `dataset_raw.jsonl`（ID 自动续接）
+  2. 对新 raw 数据再跑一遍 `data_cleaner.py`、`coarse_label.py`、`subtype_assign.py`；
+  3. 把旧 `with_coarse_and_subtypes.jsonl` 与新数据合并；
+  4. 重新跑 `dataset_split.py` & `hardset_maker.py`。
+- 代码逻辑不用改，**Day1 全部脚本设计成"对输入文件无状态处理"**，方便反复重跑。
 
 ------
 
@@ -128,7 +150,7 @@ project/
 **工作内容：**
 
 - 使用 `train.jsonl` 上的 coarse label（敏感 / 非敏感）做 LoRA 微调：
-  - 模型：Qwen-0.5B 或 1.7B；
+  - 模型：Qwen1.7B；
   - 任务：只做二分类，不训练子类头。
 - 在 dev 上监控 loss / F1，保存最优 checkpoint。
 
