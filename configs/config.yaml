@@ -102,3 +102,9 @@ data_cleaning:
   deduplication:
     exact: true              # 精确去重（基于MD5哈希）
 
+# 校准分析配置（Day5）
+calibration:
+  n_buckets: 10  # 分桶数量
+  batch_size: 16  # 批处理大小
+  device: "cuda"  # 设备（cuda/cpu）
+
