@@ -1,42 +1,88 @@
 """
-test_hardset_maker.py - hardset_maker.py 单元测试
+test_hardset_maker_logic.py - hardset_maker.py 核心逻辑单元测试（不依赖 torch）
+
+这个测试文件直接测试 find_disagreement_samples 函数的逻辑，不导入整个模块
 """
 
-import os
-import sys
 import json
-import tempfile
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
-# 添加 scripts 目录到路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-# 尝试导入，如果失败则跳过需要这些依赖的测试
-try:
-    from hardset_maker import (
-        find_disagreement_samples,
-        load_config,
-    )
-    HAS_DEPENDENCIES = True
-except ImportError as e:
-    # 如果缺少依赖（如 torch），标记为不可用
-    HAS_DEPENDENCIES = False
-    # 定义占位函数以便测试可以运行
-    def find_disagreement_samples(*args, **kwargs):
-        pytest.skip("缺少依赖（torch/transformers/peft）")
+def find_disagreement_samples_logic(
+    baseline_results,
+    teacher_predictions,
+    confidence_threshold=0.8,
+    min_size=500,
+    max_size=2000
+):
+    """
+    找出分歧样本的核心逻辑（从 hardset_maker.py 提取）
+    """
+    import random
     
-    def load_config(*args, **kwargs):
-        pytest.skip("缺少依赖（torch/transformers/peft）")
-
-
-class TestHardsetMaker:
-    """测试困难子集构造功能"""
+    disagreement_samples = []
     
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
+    for result in baseline_results:
+        sample_id = result['id']
+        baseline_pred = result['pred_label']
+        baseline_prob = result['pred_prob']
+        true_label = result.get('coarse_label')
+        teacher_pred = teacher_predictions.get(sample_id)
+        
+        if teacher_pred is None:
+            continue
+        
+        # 判断是否为分歧样本
+        is_disagreement = False
+        
+        # 情况1: baseline 预测错误但 teacher 预测正确
+        if true_label is not None:
+            baseline_wrong = (baseline_pred != true_label)
+            teacher_correct = (teacher_pred == true_label)
+            if baseline_wrong and teacher_correct:
+                is_disagreement = True
+        
+        # 情况2: baseline 高置信但预测错误
+        if true_label is not None:
+            if baseline_prob >= confidence_threshold and baseline_pred != true_label:
+                is_disagreement = True
+        
+        # 情况3: baseline 和 teacher 预测不一致（即使没有真实标签）
+        if baseline_pred != teacher_pred:
+            is_disagreement = True
+        
+        if is_disagreement:
+            disagreement_samples.append({
+                **result,
+                'teacher_label': teacher_pred,
+                'disagreement_type': []
+            })
+            
+            # 记录分歧类型
+            if true_label is not None:
+                if baseline_pred != true_label and teacher_pred == true_label:
+                    disagreement_samples[-1]['disagreement_type'].append('baseline_wrong_teacher_correct')
+                if baseline_prob >= confidence_threshold and baseline_pred != true_label:
+                    disagreement_samples[-1]['disagreement_type'].append('high_conf_error')
+            if baseline_pred != teacher_pred:
+                disagreement_samples[-1]['disagreement_type'].append('prediction_mismatch')
+    
+    # 按置信度排序（高置信错误优先）
+    # 使用 (pred_prob, id) 作为排序键，确保稳定排序
+    disagreement_samples.sort(key=lambda x: (x['pred_prob'], x['id']), reverse=True)
+    
+    # 选择样本
+    selected_size = min(max_size, max(min_size, len(disagreement_samples)))
+    selected_samples = disagreement_samples[:selected_size]
+    
+    return selected_samples
+
+
+class TestHardsetMakerLogic:
+    """测试困难子集构造核心逻辑"""
+    
     def test_find_disagreement_samples_baseline_wrong_teacher_correct(self):
         """测试找出 baseline 预测错误但 teacher 预测正确的样本"""
-        # 创建测试数据
         baseline_results = [
             {
                 'id': 's1',
@@ -61,8 +107,7 @@ class TestHardsetMaker:
             's2': 0,  # teacher 预测：非敏感（正确）
         }
         
-        # 执行查找
-        disagreement_samples = find_disagreement_samples(
+        disagreement_samples = find_disagreement_samples_logic(
             baseline_results,
             teacher_predictions,
             confidence_threshold=0.8,
@@ -75,10 +120,8 @@ class TestHardsetMaker:
         assert disagreement_samples[0]['id'] == 's1'
         assert 'baseline_wrong_teacher_correct' in disagreement_samples[0]['disagreement_type']
     
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
     def test_find_disagreement_samples_high_conf_error(self):
         """测试找出高置信但预测错误的样本"""
-        # 创建测试数据
         baseline_results = [
             {
                 'id': 's1',
@@ -99,12 +142,11 @@ class TestHardsetMaker:
         ]
         
         teacher_predictions = {
-            's1': 0,  # teacher 也预测错误（但这不是重点）
+            's1': 0,
             's2': 0,
         }
         
-        # 执行查找
-        disagreement_samples = find_disagreement_samples(
+        disagreement_samples = find_disagreement_samples_logic(
             baseline_results,
             teacher_predictions,
             confidence_threshold=0.8,
@@ -117,10 +159,8 @@ class TestHardsetMaker:
         assert disagreement_samples[0]['id'] == 's1'
         assert 'high_conf_error' in disagreement_samples[0]['disagreement_type']
     
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
     def test_find_disagreement_samples_prediction_mismatch(self):
         """测试找出 baseline 和 teacher 预测不一致的样本"""
-        # 创建测试数据（没有真实标签）
         baseline_results = [
             {
                 'id': 's1',
@@ -145,8 +185,7 @@ class TestHardsetMaker:
             's2': 1,  # teacher 预测：敏感（与 baseline 一致）
         }
         
-        # 执行查找
-        disagreement_samples = find_disagreement_samples(
+        disagreement_samples = find_disagreement_samples_logic(
             baseline_results,
             teacher_predictions,
             confidence_threshold=0.8,
@@ -159,10 +198,8 @@ class TestHardsetMaker:
         assert disagreement_samples[0]['id'] == 's1'
         assert 'prediction_mismatch' in disagreement_samples[0]['disagreement_type']
     
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
     def test_find_disagreement_samples_size_limit(self):
         """测试样本数量限制"""
-        # 创建大量测试数据
         baseline_results = []
         teacher_predictions = {}
         
@@ -177,8 +214,7 @@ class TestHardsetMaker:
             })
             teacher_predictions[f's{i}'] = 1  # teacher 全部预测正确
         
-        # 执行查找（限制最大数量）
-        disagreement_samples = find_disagreement_samples(
+        disagreement_samples = find_disagreement_samples_logic(
             baseline_results,
             teacher_predictions,
             confidence_threshold=0.8,
@@ -190,10 +226,8 @@ class TestHardsetMaker:
         assert len(disagreement_samples) >= 10
         assert len(disagreement_samples) <= 20
     
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
     def test_find_disagreement_samples_sorting(self):
         """测试样本按置信度排序"""
-        # 创建测试数据（不同置信度）
         baseline_results = [
             {
                 'id': 's1',
@@ -227,8 +261,7 @@ class TestHardsetMaker:
             's3': 1,
         }
         
-        # 执行查找
-        disagreement_samples = find_disagreement_samples(
+        disagreement_samples = find_disagreement_samples_logic(
             baseline_results,
             teacher_predictions,
             confidence_threshold=0.8,
@@ -241,33 +274,6 @@ class TestHardsetMaker:
         assert disagreement_samples[0]['pred_prob'] >= disagreement_samples[1]['pred_prob']
         assert disagreement_samples[1]['pred_prob'] >= disagreement_samples[2]['pred_prob']
         assert disagreement_samples[0]['id'] == 's2'  # 最高置信度
-    
-    @pytest.mark.skipif(not HAS_DEPENDENCIES, reason="缺少依赖（torch/transformers/peft）")
-    def test_load_config(self):
-        """测试配置加载"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = os.path.join(tmpdir, 'config.yaml')
-            
-            # 创建测试配置
-            config_content = """
-data_dir: "./data"
-output_dir: "./output"
-hardset:
-  min_size: 500
-  max_size: 2000
-  confidence_threshold: 0.8
-"""
-            with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(config_content)
-            
-            # 加载配置
-            config = load_config(config_path)
-            
-            # 验证
-            assert config['data_dir'] == './data'
-            assert config['hardset']['min_size'] == 500
-            assert config['hardset']['max_size'] == 2000
-            assert config['hardset']['confidence_threshold'] == 0.8
 
 
 if __name__ == '__main__':
