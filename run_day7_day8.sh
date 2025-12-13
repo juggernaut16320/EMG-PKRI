@@ -27,11 +27,11 @@ echo "3. 检查前置文件..."
 if [ ! -f "output/dev_with_uncertainty.jsonl" ]; then
     echo "⚠ dev_with_uncertainty.jsonl 不存在"
     echo "   提示：如果确定文件不存在，可以运行以下命令生成："
-    echo "   python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --output-dir output"
+    echo "   python scripts/uncertainty_analysis.py --dev-file dev.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B"
     read -p "是否现在运行uncertainty_analysis.py生成该文件? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
+        python scripts/uncertainty_analysis.py --dev-file dev.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
     else
         echo "退出。请先确保前置文件存在。"
         exit 1
@@ -67,7 +67,7 @@ if [ ! -f "output/uncertainty_buckets.csv" ]; then
     read -p "是否现在运行uncertainty_analysis.py生成该文件? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --test-file data/test.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
+        python scripts/uncertainty_analysis.py --dev-file dev.jsonl --test-file test.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
     else
         echo "退出。请先确保前置文件存在。"
         exit 1
