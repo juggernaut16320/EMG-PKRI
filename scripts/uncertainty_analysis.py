@@ -372,6 +372,27 @@ def plot_u_vs_error(bucket_df: pd.DataFrame, output_path: str):
     plt.close()
 
 
+def make_json_serializable(obj):
+    """
+    递归地将对象转换为 JSON 可序列化的格式
+    处理 Tensor, numpy 数组等类型
+    """
+    if isinstance(obj, torch.Tensor):
+        return obj.cpu().detach().numpy().tolist()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {key: make_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_serializable(item) for item in obj]
+    else:
+        return obj
+
+
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="不确定性指标 u 构建 + 分桶分析工具")
@@ -534,7 +555,9 @@ def main():
         
         with open(output_jsonl_path, 'w', encoding='utf-8') as f:
             for result in dataset_results:
-                f.write(json.dumps(result, ensure_ascii=False) + '\n')
+                # 确保所有值都是 JSON 可序列化的
+                serializable_result = make_json_serializable(result)
+                f.write(json.dumps(serializable_result, ensure_ascii=False) + '\n')
         
         logger.info(f"✓ {dataset_name} 完整结果已保存，共 {len(dataset_results)} 条")
     
