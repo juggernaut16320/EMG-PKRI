@@ -120,7 +120,11 @@ def load_baseline_model(checkpoint_path: str, base_model_path: str, device: str 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     logger.info(f"加载 tokenizer: {base_model_path}")
-    tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        base_model_path, 
+        trust_remote_code=True,
+        local_files_only=True  # 强制使用本地文件，避免网络请求
+    )
     
     # 设置 pad_token（如果不存在）
     if tokenizer.pad_token is None:
@@ -136,6 +140,7 @@ def load_baseline_model(checkpoint_path: str, base_model_path: str, device: str 
         base_model_path,
         num_labels=2,
         trust_remote_code=True,
+        local_files_only=True,  # 强制使用本地文件，避免网络请求
         torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map='auto' if device == 'cuda' else None
     )

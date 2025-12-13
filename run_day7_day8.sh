@@ -31,7 +31,7 @@ if [ ! -f "output/dev_with_uncertainty.jsonl" ]; then
     read -p "是否现在运行uncertainty_analysis.py生成该文件? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --output-dir output
+        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
     else
         echo "退出。请先确保前置文件存在。"
         exit 1
@@ -67,7 +67,7 @@ if [ ! -f "output/uncertainty_buckets.csv" ]; then
     read -p "是否现在运行uncertainty_analysis.py生成该文件? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --test-file data/test.jsonl --output-dir output
+        python scripts/uncertainty_analysis.py --dev-file data/dev.jsonl --test-file data/test.jsonl --output-dir output --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
     else
         echo "退出。请先确保前置文件存在。"
         exit 1
