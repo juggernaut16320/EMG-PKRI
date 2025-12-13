@@ -562,7 +562,9 @@ def main():
         
         # 添加所有 α 的指标
         for alpha in alpha_grid:
-            alpha_key = f"alpha_{alpha}".replace('.', '_')
+            # 将alpha转换为字符串，替换点号为下划线，确保唯一性
+            alpha_str = str(alpha).replace('.', '_')
+            alpha_key = f"alpha_{alpha_str}"
             metrics = alpha_metrics[alpha]
             result_row[f'{alpha_key}_f1'] = metrics['f1']
             result_row[f'{alpha_key}_nll'] = metrics['nll']
@@ -570,7 +572,9 @@ def main():
         results.append(result_row)
     
     # 保存结果
-    os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else '.', exist_ok=True)
+    output_dir_path = os.path.dirname(output_file)
+    if output_dir_path:
+        os.makedirs(output_dir_path, exist_ok=True)
     
     results_df = pd.DataFrame(results)
     results_df.to_csv(output_file, index=False, encoding='utf-8')

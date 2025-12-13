@@ -205,15 +205,15 @@ emg_bucket_search:
 
 ### 核心功能实现
 
-- [ ] **emg_bucket_search.py**
-  - [ ] 加载 baseline 预测结果（从 uncertainty_analysis 输出或单独加载）
-  - [ ] 加载 q₀ 后验
-  - [ ] 加载不确定性分桶信息
-  - [ ] EMG 融合计算
-  - [ ] α 网格搜索
-  - [ ] F1/NLL 计算
-  - [ ] 最优 α* 选择
-  - [ ] 结果输出
+- [x] **emg_bucket_search.py**
+  - [x] 加载 baseline 预测结果（从 uncertainty_analysis 输出或单独加载）
+  - [x] 加载 q₀ 后验
+  - [x] 加载不确定性分桶信息
+  - [x] EMG 融合计算
+  - [x] α 网格搜索
+  - [x] F1/NLL 计算
+  - [x] 最优 α* 选择
+  - [x] 结果输出
 
 ### 测试文件
 
@@ -230,8 +230,8 @@ emg_bucket_search:
 ### 文档和示例
 
 - [x] **Day7.md 文档**（当前文档）
-- [ ] **配置文件更新**
-  - [ ] 在 config.yaml 中添加 emg_bucket_search 配置
+- [x] **配置文件更新**
+  - [x] 在 config.yaml 中添加 emg_bucket_search 配置
 
 ---
 
@@ -304,6 +304,12 @@ bucket_id,alpha_star,f1_at_alpha_star
 
 ---
 
-**最后更新**：2025-12-13  
-**状态**：📝 待实现
+**最后更新**：2025-12-14  
+**状态**：✅ 已完成
+
+**完成情况总结：**
+- ✅ 核心功能已实现：`emg_bucket_search.py` 脚本已完成
+- ✅ 支持从 `uncertainty_analysis.py` 的输出文件加载数据
+- ✅ 支持自定义 α 网格和优化指标（F1/NLL）
+- ✅ 输出格式符合 Day8 的要求（为 PAV 保序回归提供数据）
 
