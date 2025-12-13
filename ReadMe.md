@@ -274,7 +274,17 @@ python -m pytest tests/ -v
 
 **工程说明：**
 
-- 新增脚本：`scripts/q0_builder.py`：
+- **前置脚本：** `scripts/lexicon_generator.py`（使用大模型生成词表和正则规则）：
+  - 输入：已标注数据（`data/train.jsonl`，包含 `subtype_label`）
+  - 输出：词表文件（在 `configs/lexicons/` 下）
+    - `porn.txt` - 色情相关词表
+    - `politics.txt` - 涉政相关词表
+    - `abuse.txt` - 辱骂相关词表
+    - `regex_patterns.txt` - 正则规则（可选）
+  - 功能：
+    - 从标注数据中采样样本，调用大模型生成词表和正则规则
+    - **词表清洗**：使用 `--clean-lexicon` 参数清洗现有词表，删除噪声词（单字符、表情符号、正常词汇等），提高词表质量和匹配效率
+- **主脚本：** `scripts/q0_builder.py`：
   - 输入：语料 + 子标签 / 词表文件（在 `configs/lexicons/` 下）；
   - 输出：
     - `q0_train.jsonl`

@@ -183,3 +183,77 @@ training:
   - 使用梯度累积（`gradient_accumulation_steps`）
   - 使用更小的模型（如 Qwen1.5-0.5B）
 
+---
+
+## Day2 训练成果 ✅
+
+### 训练完成情况
+
+**训练时间：** 2025-12-11 16:27 ~ 2025-12-12 00:08（约 7.7 小时）
+
+**训练配置：**
+- **基础模型**：Qwen3-1.7B（本地路径：`/mnt/workspace/models/qwen/Qwen3-1___7B`）
+- **训练数据**：39,583 条样本（train.jsonl）
+- **验证数据**：4,948 条样本（dev.jsonl）
+- **训练轮数**：3 epochs
+- **可训练参数**：1,609,728（占总参数 0.0935%）
+- **训练步数**：14,844 steps
+
+### 最终评估指标（Epoch 2.99）
+
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| **Loss** | 0.563 | 验证集损失 |
+| **Accuracy** | **84.6%** | 准确率 |
+| **F1 Score** | **88.3%** | F1 分数（主要优化目标） |
+| **Precision** | **87.1%** | 精确率 |
+| **Recall** | **89.6%** | 召回率 |
+
+### 训练过程分析
+
+- **训练损失**：从初始 1.74 降至约 0.26（最后几个 step）
+- **验证损失**：稳定在 0.35~0.57 之间
+- **F1 分数**：
+  - **初始 F1**：84.75%（epoch 0.04，首次评估）
+  - **最终 F1**：88.3%（epoch 2.99）
+  - **提升幅度**：+3.55 个百分点
+- **模型收敛**：训练过程稳定，无明显过拟合现象
+
+### 模型保存位置
+
+**路径：** `checkpoints/baseline-lora/`
+
+**文件清单：**
+```
+checkpoints/baseline-lora/
+├── adapter_model.safetensors      # LoRA 权重（6.2M）
+├── adapter_config.json            # LoRA 配置
+├── training_args.bin              # 训练参数
+├── tokenizer_config.json          # Tokenizer 配置
+├── tokenizer.json                 # Tokenizer 文件（11M）
+├── vocab.json                     # 词汇表（2.7M）
+├── merges.txt                     # BPE merges（1.6M）
+├── special_tokens_map.json        # 特殊 token 映射
+├── added_tokens.json              # 新增 tokens
+├── chat_template.jinja            # 聊天模板
+├── README.md                      # 模型说明
+└── checkpoint-*/                  # 中间 checkpoint（3个）
+```
+
+### 训练统计
+
+- **总训练时间**：27,670 秒（约 7.7 小时）
+- **训练速度**：4.29 样本/秒，0.536 步/秒
+- **评估速度**：25.19 样本/秒，1.578 步/秒
+- **平均训练损失**：0.339
+
+### 结论
+
+✅ **Day2 任务已完成**
+
+- 基线模型训练成功完成
+- 模型性能达到预期（F1: 88.3%）
+- 所有必需文件已保存到 `checkpoints/baseline-lora/`
+- 模型可用于后续 Day3-Day12 的任务
+
+**下一步：** 可以开始 Day3 的任务，使用训练好的 baseline 模型进行概率预测。

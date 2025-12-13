@@ -501,6 +501,38 @@ def main():
     logger.info(f"\n保存分桶结果到: {bucket_csv_path}")
     bucket_df.to_csv(bucket_csv_path, index=False, encoding='utf-8')
     
+    # 保存包含 pred_probs 和 uncertainty 的完整结果（用于 Day7）
+    # 分别保存 dev 和 test 的结果
+    dataset_paths = [("dev", dev_path), ("test", test_path)]
+    for dataset_name, dataset_path in dataset_paths:
+        if not os.path.exists(dataset_path):
+            continue
+        
+        # 加载原始数据以获取 ID 映射
+        original_ids = set()
+        with open(dataset_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        item = json.loads(line)
+                        if 'id' in item:
+                            original_ids.add(item['id'])
+                    except:
+                        pass
+        
+        # 找到对应的结果（通过 ID 匹配）
+        dataset_results = [r for r in all_results if r.get('id') in original_ids]
+        
+        # 保存到输出目录
+        output_jsonl_path = os.path.join(output_dir, f'{dataset_name}_with_uncertainty.jsonl')
+        logger.info(f"保存 {dataset_name} 完整结果到: {output_jsonl_path}")
+        
+        with open(output_jsonl_path, 'w', encoding='utf-8') as f:
+            for result in dataset_results:
+                f.write(json.dumps(result, ensure_ascii=False) + '\n')
+        
+        logger.info(f"✓ {dataset_name} 完整结果已保存，共 {len(dataset_results)} 条")
+    
     # 绘制图表
     plot_path = os.path.join(output_dir, 'u_vs_error.png')
     plot_u_vs_error(bucket_df, plot_path)

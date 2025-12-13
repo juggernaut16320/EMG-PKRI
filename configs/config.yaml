@@ -108,3 +108,21 @@ calibration:
   batch_size: 16  # 批处理大小
   device: "cuda"  # 设备（cuda/cpu）
 
+# 知识后验 q₀ 配置（Day6）
+q0:
+  lexicon_dir: "configs/lexicons"  # 词表目录
+  use_regex: false                 # 是否使用正则规则
+  porn_weight: 1.0                 # 色情类别权重
+  politics_weight: 0.8             # 涉政类别权重
+  abuse_weight: 0.6                # 辱骂类别权重
+  base_sensitive_prob: 0.1         # 基础敏感概率（无匹配时）
+  max_sensitive_prob: 0.95        # 最大敏感概率
+  min_matches_for_sensitive: 1     # 触发敏感的最小匹配数
+  include_details: true            # 是否包含匹配详情
+
+# EMG 分桶 α 搜索配置（Day7）
+emg_bucket_search:
+  alpha_grid: [0, 0.25, 0.5, 0.75, 1.0]  # α 网格
+  metric: "f1"  # 优化指标：f1 或 nll
+  bucket_type: "equal_width"  # 分桶类型：equal_width 或 equal_freq（预留）
+
