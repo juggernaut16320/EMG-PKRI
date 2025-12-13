@@ -216,7 +216,8 @@ def compute_q0(
     base_sensitive_prob: float = 0.1,
     max_sensitive_prob: float = 0.95,
     min_matches_for_sensitive: int = 1,
-    include_details: bool = True
+    include_details: bool = True,
+    automaton_cache: Optional[Dict] = None
 ) -> Tuple[List[float], Optional[Dict]]:
     """
     计算知识后验 q₀
@@ -233,6 +234,7 @@ def compute_q0(
         max_sensitive_prob: 最大敏感概率
         min_matches_for_sensitive: 触发敏感的最小匹配数
         include_details: 是否包含匹配详情
+        automaton_cache: 可选的自动机缓存（用于加速词表匹配）
     
     Returns:
         (q0概率, 匹配详情)
