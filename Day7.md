@@ -217,15 +217,15 @@ emg_bucket_search:
 
 ### 测试文件
 
-- [ ] **test_emg_bucket_search.py**
-  - [ ] 测试脚本基本功能
-  - [ ] 测试输入输出格式
-  - [ ] 测试错误处理
+- [x] **test_emg_bucket_search.py**
+  - [x] 测试脚本基本功能
+  - [x] 测试输入输出格式
+  - [x] 测试错误处理
 
-- [ ] **test_emg_bucket_search_logic.py**
-  - [ ] 测试 EMG 融合逻辑
-  - [ ] 测试 α 搜索逻辑
-  - [ ] 测试边界情况
+- [x] **test_emg_bucket_search_logic.py**
+  - [x] 测试 EMG 融合逻辑
+  - [x] 测试 α 搜索逻辑
+  - [x] 测试边界情况
 
 ### 文档和示例
 
