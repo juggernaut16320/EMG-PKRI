@@ -745,6 +745,9 @@ def main():
     if hard_metrics_dict:
         output_metrics['hard_set'] = hard_metrics_dict
     output_metrics['comparison'] = comparison
+    # 添加切片评估结果
+    if slice_results:
+        output_metrics['uncertainty_slices'] = slice_results
     
     metrics_file = os.path.join(output_dir, 'metrics_emg.json')
     with open(metrics_file, 'w', encoding='utf-8') as f:
