@@ -113,11 +113,11 @@ q0:
   lexicon_dir: "configs/lexicons"  # 词表目录
   use_regex: false                 # 是否使用正则规则
   porn_weight: 1.0                 # 色情类别权重
-  politics_weight: 0.8             # 涉政类别权重
-  abuse_weight: 0.6                # 辱骂类别权重
+  politics_weight: 0.6             # 涉政类别权重（从0.8降低到0.6，减少误报）
+  abuse_weight: 0.5                # 辱骂类别权重（从0.6降低到0.5，减少误报）
   base_sensitive_prob: 0.1         # 基础敏感概率（无匹配时）
-  max_sensitive_prob: 0.95        # 最大敏感概率
-  min_matches_for_sensitive: 1     # 触发敏感的最小匹配数
+  max_sensitive_prob: 0.75         # 最大敏感概率（从0.95降低到0.75，减少过度敏感）
+  min_matches_for_sensitive: 2     # 触发敏感的最小匹配数（从1提高到2，减少单词误匹配）
   include_details: true            # 是否包含匹配详情
 
 # EMG 分桶 α 搜索配置（Day7）
