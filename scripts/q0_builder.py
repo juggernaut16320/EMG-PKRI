@@ -275,7 +275,8 @@ def compute_q0(
         # sigmoid(x) = 1 / (1 + exp(-x))
         # 调整参数使 match_score 在合理范围内映射到 [base_sensitive_prob, max_sensitive_prob]
         # 使用 tanh 函数，然后映射到目标范围
-        normalized_score = np.tanh(match_score * 10)  # 调整缩放因子
+        # 降低缩放因子从10到5，使概率增长更平缓，避免过度敏感
+        normalized_score = np.tanh(match_score * 5)  # 调整缩放因子（从10降低到5）
         p_sensitive = base_sensitive_prob + (max_sensitive_prob - base_sensitive_prob) * (normalized_score + 1) / 2
     
     # 确保概率在 [0, 1] 范围内
