@@ -757,19 +757,41 @@ def main():
     # 保存 CSV 对比表格
     comparison_rows = []
     for dataset_name, dataset_metrics in output_metrics.items():
-        if dataset_name == 'comparison':
+        if dataset_name in ['comparison', 'uncertainty_slices']:
             continue
-        for method, metrics in dataset_metrics.items():
-            comparison_rows.append({
-                'method': method,
-                'dataset': dataset_name,
-                'accuracy': metrics['accuracy'],
-                'f1': metrics['f1'],
-                'precision': metrics['precision'],
-                'recall': metrics['recall'],
-                'nll': metrics['nll'],
-                'ece': metrics['ece']
-            })
+        # 处理普通数据集（test_set, hard_set）
+        if isinstance(dataset_metrics, dict):
+            for method, metrics in dataset_metrics.items():
+                if isinstance(metrics, dict) and 'accuracy' in metrics:
+                    comparison_rows.append({
+                        'method': method,
+                        'dataset': dataset_name,
+                        'accuracy': metrics['accuracy'],
+                        'f1': metrics['f1'],
+                        'precision': metrics['precision'],
+                        'recall': metrics['recall'],
+                        'nll': metrics['nll'],
+                        'ece': metrics['ece']
+                    })
+    
+    # 单独处理切片结果
+    if 'uncertainty_slices' in output_metrics:
+        for slice_name, slice_data in output_metrics['uncertainty_slices'].items():
+            if isinstance(slice_data, dict):
+                for method in ['baseline', 'emg']:
+                    if method in slice_data and isinstance(slice_data[method], dict):
+                        metrics = slice_data[method]
+                        if 'accuracy' in metrics:
+                            comparison_rows.append({
+                                'method': method,
+                                'dataset': f'slice_{slice_name}',
+                                'accuracy': metrics['accuracy'],
+                                'f1': metrics['f1'],
+                                'precision': metrics['precision'],
+                                'recall': metrics['recall'],
+                                'nll': metrics['nll'],
+                                'ece': metrics['ece']
+                            })
     
     comparison_df = pd.DataFrame(comparison_rows)
     comparison_csv = os.path.join(output_dir, 'emg_comparison_table.csv')
