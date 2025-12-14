@@ -347,6 +347,106 @@ def evaluate_method(
     return metrics
 
 
+def evaluate_by_uncertainty_slices(
+    baseline_results: Dict[str, Dict],
+    q0_dict: Dict[str, List[float]],
+    alpha_lut: Dict[str, List[float]],
+    thresholds: List[float] = [0.1, 0.3]
+) -> Dict:
+    """
+    按不确定性切片评估 EMG 效果
+    
+    Args:
+        baseline_results: baseline 预测结果
+        q0_dict: q₀ 后验字典
+        alpha_lut: α(u) 查表
+        thresholds: u 的阈值列表，例如 [0.1, 0.3] 表示：
+            - u < 0.1: 低不确定性
+            - 0.1 ≤ u < 0.3: 中等不确定性
+            - u ≥ 0.3: 高不确定性
+    
+    Returns:
+        切片评估结果字典
+    """
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("按不确定性切片评估")
+    logger.info("=" * 60)
+    
+    slices = {}
+    
+    # 低不确定性切片
+    if len(thresholds) > 0:
+        u_max = thresholds[0]
+        low_u_samples = {
+            id: result for id, result in baseline_results.items()
+            if result['uncertainty'] < u_max and id in q0_dict
+        }
+        
+        if len(low_u_samples) > 0:
+            logger.info(f"\n【低不确定性切片】u < {u_max} (样本数: {len(low_u_samples)})")
+            baseline_metrics = evaluate_method(low_u_samples, q0_dict, 'baseline')
+            emg_metrics = evaluate_method(low_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+            
+            slices[f'u_<_{u_max}'] = {
+                'baseline': baseline_metrics,
+                'emg': emg_metrics,
+                'n_samples': len(low_u_samples)
+            }
+    
+    # 中等不确定性切片
+    for i in range(len(thresholds) - 1):
+        u_min = thresholds[i]
+        u_max = thresholds[i + 1]
+        
+        mid_u_samples = {
+            id: result for id, result in baseline_results.items()
+            if u_min <= result['uncertainty'] < u_max and id in q0_dict
+        }
+        
+        if len(mid_u_samples) > 0:
+            logger.info(f"\n【中等不确定性切片】{u_min} ≤ u < {u_max} (样本数: {len(mid_u_samples)})")
+            baseline_metrics = evaluate_method(mid_u_samples, q0_dict, 'baseline')
+            emg_metrics = evaluate_method(mid_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+            
+            slices[f'u_{u_min}_{u_max}'] = {
+                'baseline': baseline_metrics,
+                'emg': emg_metrics,
+                'n_samples': len(mid_u_samples)
+            }
+    
+    # 高不确定性切片
+    if len(thresholds) > 0:
+        u_min = thresholds[-1]
+        high_u_samples = {
+            id: result for id, result in baseline_results.items()
+            if result['uncertainty'] >= u_min and id in q0_dict
+        }
+        
+        if len(high_u_samples) > 0:
+            logger.info(f"\n【高不确定性切片】u ≥ {u_min} (样本数: {len(high_u_samples)})")
+            baseline_metrics = evaluate_method(high_u_samples, q0_dict, 'baseline')
+            emg_metrics = evaluate_method(high_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+            
+            slices[f'u_≥_{u_min}'] = {
+                'baseline': baseline_metrics,
+                'emg': emg_metrics,
+                'n_samples': len(high_u_samples)
+            }
+            
+            # 计算高不确定性切片的改进
+            f1_improvement = emg_metrics['f1'] - baseline_metrics['f1']
+            nll_improvement = baseline_metrics['nll'] - emg_metrics['nll']
+            ece_improvement = baseline_metrics['ece'] - emg_metrics['ece']
+            
+            logger.info(f"\n高不确定性切片改进:")
+            logger.info(f"  - F1: {f1_improvement:+.4f} ({f1_improvement*100:+.2f}%)")
+            logger.info(f"  - NLL: {nll_improvement:+.4f} ({nll_improvement/baseline_metrics['nll']*100:+.2f}%)")
+            logger.info(f"  - ECE: {ece_improvement:+.4f} ({ece_improvement/baseline_metrics['ece']*100:+.2f}%)")
+    
+    return slices
+
+
 def compare_methods(metrics_dict: Dict[str, Dict]) -> Dict:
     """
     对比不同方法的性能
@@ -581,6 +681,11 @@ def main():
     # 3. EMG
     metrics_dict['emg'] = evaluate_method(
         baseline_results, q0_dict, 'emg', alpha_lut=alpha_lut
+    )
+    
+    # 4. 按不确定性切片评估
+    slice_results = evaluate_by_uncertainty_slices(
+        baseline_results, q0_dict, alpha_lut, thresholds=[0.1, 0.3]
     )
     
     logger.info("")
