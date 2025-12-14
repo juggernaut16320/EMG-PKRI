@@ -60,21 +60,13 @@ project/
 
 ---
 
-## 技术选型方案（从简单到复杂）
-
-### 方案 1：简单方案（推荐，快速实现）⭐
+## 实现方案
 
 **核心思路**：
 - 直接加载已有数据文件（baseline 预测、q₀、α(u) 查表）
 - 使用线性插值查找 α(u)
 - 复用 Day7 的 `compute_emg_fusion` 函数
 - 使用 sklearn 计算评估指标
-
-**优点**：
-- ✅ 实现简单，代码量少（约 300-400 行）
-- ✅ 复用现有代码，减少重复
-- ✅ 运行快速，无需模型推理
-- ✅ 易于理解和维护
 
 **实现要点**：
 1. **数据加载**：
@@ -98,145 +90,6 @@ project/
 4. **指标计算**：
    - 使用 sklearn.metrics 计算所有指标
    - 对比三种方法的性能
-
-**代码结构**：
-```python
-# 1. 数据加载函数
-def load_baseline_predictions(file_path)
-def load_q0_posteriors(file_path)
-def load_alpha_u_lut(file_path)
-
-# 2. 核心计算函数
-def lookup_alpha(u, lut)  # 查表插值
-def compute_emg_fusion(p, q, alpha)  # 复用 Day7 代码
-
-# 3. 评估函数
-def evaluate_method(predictions, labels, method_name)
-def compare_methods(baseline_results, fixed_alpha_results, emg_results)
-
-# 4. 可视化函数
-def plot_comparison(metrics_dict, output_path)
-
-# 5. 主函数
-def main()
-```
-
-**预计工作量**：2-3 小时
-
----
-
-### 方案 2：中等方案（优化性能）⭐️⭐️
-
-**在方案 1 基础上增加**：
-
-1. **缓存优化**：
-   - 预计算所有样本的 α(u) 值
-   - 缓存融合结果，避免重复计算
-
-2. **批量处理**：
-   - 向量化计算（numpy 批量操作）
-   - 批量插值查找 α(u)
-
-3. **详细分析**：
-   - 分不确定性区间的性能分析
-   - 错误案例分析（哪些样本 EMG 改善了/恶化了）
-
-4. **可视化增强**：
-   - 性能对比柱状图
-   - 不确定性区间性能热力图
-   - 错误案例可视化
-
-**优点**：
-- ✅ 性能更好（批量处理）
-- ✅ 分析更深入（分区间分析）
-- ✅ 可视化更丰富
-
-**代码增加**：
-```python
-# 批量插值查找
-def batch_lookup_alpha(u_array, lut)
-
-# 向量化融合计算
-def batch_compute_emg_fusion(p_array, q_array, alpha_array)
-
-# 分区间分析
-def analyze_by_uncertainty_buckets(results, uncertainty_buckets)
-
-# 错误案例分析
-def analyze_error_cases(baseline_results, emg_results)
-```
-
-**预计工作量**：4-5 小时
-
----
-
-### 方案 3：复杂方案（完整功能）⭐️⭐️⭐️
-
-**在方案 2 基础上增加**：
-
-1. **多种不确定性指标**：
-   - 支持 u_max、u_entropy、u_margin 等多种指标
-   - 对比不同不确定性指标的 EMG 效果
-
-2. **固定 α 网格对比**：
-   - 自动尝试多个固定 α 值（0.0, 0.25, 0.5, 0.75, 1.0）
-   - 找出最优的固定 α 值，与 EMG 对比
-
-3. **置信度校准分析**：
-   - 计算三种方法的 ECE/MCE
-   - 绘制可靠性图（Reliability Diagram）
-   - 分析哪种方法校准更好
-
-4. **统计分析**：
-   - 统计显著性检验（如 McNemar test）
-   - 置信区间计算
-   - 性能提升的显著性分析
-
-5. **详细报告生成**：
-   - 自动生成 Markdown 格式的对比报告
-   - 包含所有指标、图表、分析结论
-
-**优点**：
-- ✅ 功能完整，分析全面
-- ✅ 支持多种不确定性指标
-- ✅ 包含统计显著性检验
-- ✅ 自动生成完整报告
-
-**代码增加**：
-```python
-# 多种不确定性指标
-def compute_uncertainty_multiple_metrics(pred_probs, metric_types)
-
-# 固定 α 网格搜索
-def search_optimal_fixed_alpha(baseline_results, q0_results, alpha_grid)
-
-# 校准分析
-def compute_calibration_metrics(predictions, labels, n_buckets=10)
-def plot_reliability_diagram(predictions, labels, output_path)
-
-# 统计显著性检验
-def mcnemar_test(y_true, y_pred_method1, y_pred_method2)
-def compute_confidence_interval(metrics, n_samples, confidence=0.95)
-
-# 报告生成
-def generate_comparison_report(metrics_dict, output_path)
-```
-
-**预计工作量**：8-10 小时
-
----
-
-## 推荐选型
-
-**建议采用方案 1（简单方案）**，原因：
-1. ✅ **快速验证**：Day9 的核心目标是验证 EMG 是否优于 baseline，方案 1 足够完成这个目标
-2. ✅ **代码复用**：Day7 已经实现了 `compute_emg_fusion`，可以直接复用
-3. ✅ **易于维护**：代码简单清晰，后续如果需要扩展，可以在此基础上添加功能
-4. ✅ **快速迭代**：可以先实现方案 1 验证效果，如果效果好，再考虑扩展到方案 2/3
-
-**如果效果验证成功，后续可以考虑**：
-- 方案 2：如果需要对性能进行深入分析
-- 方案 3：如果需要撰写论文或详细报告
 
 ---
 
@@ -385,7 +238,7 @@ emg,hard,0.6789,0.7456,0.7567,0.7345,0.6234,0.1890
 
 ---
 
-## 使用方式（方案 1）
+## 使用方式
 
 ```bash
 # 基本使用（从 config.yaml 读取所有参数）
