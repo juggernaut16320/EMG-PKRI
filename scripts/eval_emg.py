@@ -372,8 +372,15 @@ def compare_methods(metrics_dict: Dict[str, Dict]) -> Dict:
             'ece_reduction_percent': ((baseline['ece'] - emg['ece']) / baseline['ece'] * 100) if baseline['ece'] > 0 else 0.0
         }
     
-    if 'fixed_alpha' in metrics_dict and 'emg' in metrics_dict:
-        fixed = metrics_dict['fixed_alpha']
+    # 查找 fixed_alpha 相关的键（可能是 'fixed_alpha' 或 'fixed_alpha_0.5' 等）
+    fixed_alpha_key = None
+    for key in metrics_dict.keys():
+        if key.startswith('fixed_alpha'):
+            fixed_alpha_key = key
+            break
+    
+    if fixed_alpha_key and 'emg' in metrics_dict:
+        fixed = metrics_dict[fixed_alpha_key]
         emg = metrics_dict['emg']
         
         comparison['emg_vs_fixed_alpha'] = {
