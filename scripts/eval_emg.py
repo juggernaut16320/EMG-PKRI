@@ -240,7 +240,9 @@ def evaluate_method(
     q0_dict: Dict[str, List[float]],
     method: str,
     alpha_lut: Optional[Dict[str, List[float]]] = None,
-    fixed_alpha: Optional[float] = None
+    fixed_alpha: Optional[float] = None,
+    knowledge_threshold: Optional[float] = None,
+    use_consistency_gating: bool = False
 ) -> Dict:
     """
     评估一种方法（Baseline、固定α融合、EMG）
@@ -297,6 +299,21 @@ def evaluate_method(
                 raise ValueError("emg 方法需要指定 alpha_lut 参数")
             u = result['uncertainty']
             alpha = lookup_alpha(u, alpha_lut)
+            
+            # 应用门控机制
+            # 优先级1: 知识阈值门控
+            if knowledge_threshold is not None:
+                max_q0 = max(q0)
+                if max_q0 < knowledge_threshold:
+                    # 知识太弱，完全信任模型
+                    alpha = 1.0
+            
+            # 优先级2: 一致性门控
+            if use_consistency_gating:
+                if np.argmax(p) != np.argmax(q0):
+                    # 预测不一致，强制使用小alpha（或0）
+                    alpha = 0.0
+            
             p_final = compute_emg_fusion(p, q0, alpha)
         else:
             raise ValueError(f"未知方法: {method}")
@@ -386,7 +403,11 @@ def evaluate_by_uncertainty_slices(
         if len(low_u_samples) > 0:
             logger.info(f"\n【低不确定性切片】u < {u_max} (样本数: {len(low_u_samples)})")
             baseline_metrics = evaluate_method(low_u_samples, q0_dict, 'baseline')
-            emg_metrics = evaluate_method(low_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+            emg_metrics = evaluate_method(
+                low_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut,
+                knowledge_threshold=knowledge_threshold,
+                use_consistency_gating=use_consistency_gating
+            )
             
             slices[f'u_<_{u_max}'] = {
                 'baseline': baseline_metrics,
@@ -407,7 +428,11 @@ def evaluate_by_uncertainty_slices(
         if len(mid_u_samples) > 0:
             logger.info(f"\n【中等不确定性切片】{u_min} ≤ u < {u_max} (样本数: {len(mid_u_samples)})")
             baseline_metrics = evaluate_method(mid_u_samples, q0_dict, 'baseline')
-            emg_metrics = evaluate_method(mid_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+                emg_metrics = evaluate_method(
+                    mid_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut,
+                    knowledge_threshold=knowledge_threshold,
+                    use_consistency_gating=use_consistency_gating
+                )
             
             slices[f'u_{u_min}_{u_max}'] = {
                 'baseline': baseline_metrics,
@@ -426,7 +451,11 @@ def evaluate_by_uncertainty_slices(
         if len(high_u_samples) > 0:
             logger.info(f"\n【高不确定性切片】u ≥ {u_min} (样本数: {len(high_u_samples)})")
             baseline_metrics = evaluate_method(high_u_samples, q0_dict, 'baseline')
-            emg_metrics = evaluate_method(high_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut)
+                emg_metrics = evaluate_method(
+                    high_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut,
+                    knowledge_threshold=knowledge_threshold,
+                    use_consistency_gating=use_consistency_gating
+                )
             
             slices[f'u_≥_{u_min}'] = {
                 'baseline': baseline_metrics,
@@ -619,6 +648,23 @@ def main():
         default=None,
         help='输出目录'
     )
+    parser.add_argument(
+        '--knowledge-threshold-file',
+        type=str,
+        default=None,
+        help='知识阈值文件（JSON，包含best_threshold字段）'
+    )
+    parser.add_argument(
+        '--knowledge-threshold',
+        type=float,
+        default=None,
+        help='知识阈值（直接指定，优先级高于文件）'
+    )
+    parser.add_argument(
+        '--use-consistency-gating',
+        action='store_true',
+        help='使用一致性门控（argmax(p) != argmax(q0) 时使用 alpha=0）'
+    )
     
     args = parser.parse_args()
     
@@ -663,6 +709,22 @@ def main():
         logger.error("无法加载 α(u) 查表")
         return 1
     
+    # 加载知识阈值
+    knowledge_threshold = args.knowledge_threshold
+    if knowledge_threshold is None and args.knowledge_threshold_file:
+        threshold_file = args.knowledge_threshold_file
+        if os.path.exists(threshold_file):
+            with open(threshold_file, 'r', encoding='utf-8') as f:
+                threshold_data = json.load(f)
+                knowledge_threshold = threshold_data.get('best_threshold')
+                logger.info(f"从文件加载知识阈值: {knowledge_threshold:.4f}")
+        else:
+            logger.warning(f"知识阈值文件不存在: {threshold_file}")
+    
+    logger.info(f"知识阈值门控: {'启用' if knowledge_threshold is not None else '禁用'}")
+    if knowledge_threshold is not None:
+        logger.info(f"  阈值: {knowledge_threshold:.4f}")
+    logger.info(f"一致性门控: {'启用' if args.use_consistency_gating else '禁用'}")
     logger.info("")
     
     # 评估三种方法
@@ -678,14 +740,19 @@ def main():
         baseline_results, q0_dict, 'fixed_alpha', fixed_alpha=fixed_alpha
     )
     
-    # 3. EMG
+    # 3. EMG（可能带门控）
     metrics_dict['emg'] = evaluate_method(
-        baseline_results, q0_dict, 'emg', alpha_lut=alpha_lut
+        baseline_results, q0_dict, 'emg', 
+        alpha_lut=alpha_lut,
+        knowledge_threshold=knowledge_threshold,
+        use_consistency_gating=args.use_consistency_gating
     )
     
     # 4. 按不确定性切片评估
     slice_results = evaluate_by_uncertainty_slices(
-        baseline_results, q0_dict, alpha_lut, thresholds=[0.1, 0.3]
+        baseline_results, q0_dict, alpha_lut, thresholds=[0.1, 0.3],
+        knowledge_threshold=knowledge_threshold,
+        use_consistency_gating=args.use_consistency_gating
     )
     
     logger.info("")
