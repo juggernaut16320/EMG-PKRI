@@ -451,11 +451,11 @@ def evaluate_by_uncertainty_slices(
         if len(high_u_samples) > 0:
             logger.info(f"\n【高不确定性切片】u ≥ {u_min} (样本数: {len(high_u_samples)})")
             baseline_metrics = evaluate_method(high_u_samples, q0_dict, 'baseline')
-                emg_metrics = evaluate_method(
-                    high_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut,
-                    knowledge_threshold=knowledge_threshold,
-                    use_consistency_gating=use_consistency_gating
-                )
+            emg_metrics = evaluate_method(
+                high_u_samples, q0_dict, 'emg', alpha_lut=alpha_lut,
+                knowledge_threshold=knowledge_threshold,
+                use_consistency_gating=use_consistency_gating
+            )
             
             slices[f'u_≥_{u_min}'] = {
                 'baseline': baseline_metrics,
