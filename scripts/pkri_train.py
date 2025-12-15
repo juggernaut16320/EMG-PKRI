@@ -225,14 +225,19 @@ def train_pkri_model(
 
 def predict_confidence(
     features: pd.DataFrame,
-    model: object
+    model: object,
+    mapping_method: str = 'tanh'
 ) -> np.ndarray:
     """
-    预测知识可信度
+    预测知识可信度（优化版本：扩展可信度范围）
     
     Args:
         features: 特征DataFrame
         model: 训练好的模型
+        mapping_method: 映射方法
+            - 'tanh': 使用tanh拉伸映射（推荐）
+            - 'piecewise': 分段线性映射
+            - 'raw': 直接使用原始概率（不推荐）
     
     Returns:
         可信度数组（0-1）
@@ -240,9 +245,29 @@ def predict_confidence(
     # 预测概率（类别1的概率，即敏感的概率）
     proba = model.predict_proba(features)[:, 1]
     
-    # 将概率作为可信度
-    # 如果模型预测为敏感（高概率），则知识可信度高
-    confidence = proba
+    if mapping_method == 'raw':
+        # 原始方法（不推荐）：直接使用概率
+        confidence = proba
+    elif mapping_method == 'tanh':
+        # 方案1a：Tanh拉伸映射（推荐）
+        # 将[0.5, 1.0]映射到[0.3, 0.9]，让分布更分散
+        # tanh函数在(-inf, +inf)映射到(-1, 1)
+        # 这里将proba从[0.5, 1.0]映射到tanh的输入范围，再映射到[0.3, 0.9]
+        confidence = 0.3 + 0.6 * np.tanh((proba - 0.5) * 4)
+        # 确保在[0, 1]范围内
+        confidence = np.clip(confidence, 0.0, 1.0)
+    elif mapping_method == 'piecewise':
+        # 方案1b：分段线性映射
+        # 低概率区间扩展，高概率区间保持
+        confidence = np.where(
+            proba < 0.6,
+            0.4 + (proba - 0.5) * 2,      # [0.5,0.6] -> [0.4,0.6]
+            0.6 + (proba - 0.6) * 0.75    # [0.6,1.0] -> [0.6,0.9]
+        )
+        confidence = np.clip(confidence, 0.0, 1.0)
+    else:
+        logger.warning(f"未知的映射方法: {mapping_method}，使用raw方法")
+        confidence = proba
     
     return confidence
 
@@ -309,7 +334,8 @@ def generate_qpkri_for_dataset(
     dataset_file: str,
     model: object,
     output_file: str,
-    feature_cols: List[str]
+    feature_cols: List[str],
+    confidence_mapping: str = 'tanh'
 ):
     """
     为数据集生成q_PKRI
@@ -360,8 +386,8 @@ def generate_qpkri_for_dataset(
     automaton_cache = build_automaton_cache(lexicons)
     
     # 预测可信度
-    logger.info("预测知识可信度...")
-    confidences = predict_confidence(X, model)
+    logger.info(f"预测知识可信度（映射方法: {confidence_mapping}）...")
+    confidences = predict_confidence(X, model, mapping_method=confidence_mapping)
     
     # 生成q_PKRI
     logger.info("构建q_PKRI后验...")
@@ -416,12 +442,20 @@ def generate_qpkri_for_dataset(
     
     # 统计信息
     if qpkri_items:
-        avg_confidence = np.mean([item['confidence'] for item in qpkri_items])
-        avg_p_sensitive = np.mean([item['qpkri'][1] for item in qpkri_items])
+        confidences = [item['confidence'] for item in qpkri_items]
+        p_sensitives = [item['qpkri'][1] for item in qpkri_items]
+        
+        avg_confidence = np.mean(confidences)
+        std_confidence = np.std(confidences)
+        min_confidence = np.min(confidences)
+        max_confidence = np.max(confidences)
+        avg_p_sensitive = np.mean(p_sensitives)
         
         logger.info("")
         logger.info("q_PKRI统计:")
         logger.info(f"  平均可信度: {avg_confidence:.4f}")
+        logger.info(f"  可信度标准差: {std_confidence:.4f}")
+        logger.info(f"  可信度范围: [{min_confidence:.4f}, {max_confidence:.4f}]")
         logger.info(f"  平均敏感概率: {avg_p_sensitive:.4f}")
 
 
@@ -452,6 +486,9 @@ def main():
                        help='q_PKRI输出目录')
     parser.add_argument('--output-metrics', type=str, default=None,
                        help='评估指标输出文件（JSON，可选）')
+    parser.add_argument('--confidence-mapping', type=str, default='tanh',
+                       choices=['tanh', 'piecewise', 'raw'],
+                       help='可信度映射方法：tanh（推荐）、piecewise、raw')
     
     args = parser.parse_args()
     
@@ -509,7 +546,8 @@ def main():
             dataset_file,
             model,
             output_file,
-            feature_cols
+            feature_cols,
+            confidence_mapping=args.confidence_mapping
         )
     
     # 保存评估指标
