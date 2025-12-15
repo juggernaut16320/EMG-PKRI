@@ -102,23 +102,25 @@ def load_baseline_predictions(file_path: str) -> Dict[str, Dict]:
     return results
 
 
-def load_q0_posteriors(file_path: str) -> Dict[str, List[float]]:
+def load_knowledge_posteriors(file_path: str, field_name: str = 'q0') -> Dict[str, List[float]]:
     """
-    加载 q₀ 后验
+    加载知识后验（q₀ 或 q_PKRI）
     
     Args:
-        file_path: JSONL 文件路径（包含 q₀ 后验）
+        file_path: JSONL 文件路径（包含知识后验）
+        field_name: 字段名（'q0' 或 'qpkri'）
     
     Returns:
-        字典，key 为样本 ID，value 为 q₀ 概率 [p_non_sensitive, p_sensitive]
+        字典，key 为样本 ID，value 为知识后验概率 [p_non_sensitive, p_sensitive]
     """
-    logger.info(f"加载 q₀ 后验: {file_path}")
+    knowledge_name = 'q_PKRI' if field_name == 'qpkri' else 'q₀'
+    logger.info(f"加载 {knowledge_name} 后验: {file_path}")
     
     if not os.path.exists(file_path):
         logger.error(f"文件不存在: {file_path}")
         return {}
     
-    q0_dict = {}
+    knowledge_dict = {}
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -130,17 +132,30 @@ def load_q0_posteriors(file_path: str) -> Dict[str, List[float]]:
                 if item_id is None:
                     continue
                 
-                if 'q0' not in item:
-                    logger.warning(f"样本 {item_id} 缺少 q0 字段，跳过")
+                if field_name not in item:
+                    logger.warning(f"样本 {item_id} 缺少 {field_name} 字段，跳过")
                     continue
                 
-                q0_dict[item_id] = item['q0']  # [p_non_sensitive, p_sensitive]
+                knowledge_dict[item_id] = item[field_name]  # [p_non_sensitive, p_sensitive]
             except Exception as e:
                 logger.warning(f"解析行失败: {e}")
                 continue
     
-    logger.info(f"✓ 加载 {len(q0_dict)} 条 q₀ 后验")
-    return q0_dict
+    logger.info(f"✓ 加载 {len(knowledge_dict)} 条 {knowledge_name} 后验")
+    return knowledge_dict
+
+
+def load_q0_posteriors(file_path: str) -> Dict[str, List[float]]:
+    """
+    加载 q₀ 后验（向后兼容）
+    
+    Args:
+        file_path: JSONL 文件路径（包含 q₀ 后验）
+    
+    Returns:
+        字典，key 为样本 ID，value 为 q₀ 概率 [p_non_sensitive, p_sensitive]
+    """
+    return load_knowledge_posteriors(file_path, field_name='q0')
 
 
 def load_alpha_u_lut(file_path: str) -> Dict[str, List[float]]:
@@ -249,23 +264,12 @@ def evaluate_method(
     
     Args:
         baseline_results: baseline 预测结果
-        q0_dict: q₀ 后验字典
-        method: 方法名称（'baseline', 'fixed_alpha_0.5'等, 'emg'）
-        alpha_lut: α(u) 查表（仅 EMG 需要）
-        fixed_alpha: 固定 α 值（仅 fixed_alpha 需要）
-    
-    Returns:
-        评估指标字典
-    """
-    """
-    评估一种方法（Baseline、固定α融合、EMG）
-    
-    Args:
-        baseline_results: baseline 预测结果
-        q0_dict: q₀ 后验字典
+        q0_dict: 知识后验字典（可以是 q₀ 或 q_PKRI），格式为 {id: [p_non_sensitive, p_sensitive]}
         method: 方法名称（'baseline', 'fixed_alpha', 'emg'）
         alpha_lut: α(u) 查表（仅 EMG 需要）
         fixed_alpha: 固定 α 值（仅 fixed_alpha 需要）
+        knowledge_threshold: 知识阈值（用于门控，可选）
+        use_consistency_gating: 是否使用一致性门控
     
     Returns:
         评估指标字典
@@ -377,7 +381,7 @@ def evaluate_by_uncertainty_slices(
     
     Args:
         baseline_results: baseline 预测结果
-        q0_dict: q₀ 后验字典
+        q0_dict: 知识后验字典（可以是 q₀ 或 q_PKRI），格式为 {id: [p_non_sensitive, p_sensitive]}
         alpha_lut: α(u) 查表
         thresholds: u 的阈值列表，例如 [0.1, 0.3] 表示：
             - u < 0.1: 低不确定性
@@ -669,6 +673,13 @@ def main():
         action='store_true',
         help='使用一致性门控（argmax(p) != argmax(q0) 时使用 alpha=0）'
     )
+    parser.add_argument(
+        '--knowledge-source',
+        type=str,
+        choices=['q0', 'qpkri'],
+        default='q0',
+        help='知识源类型：q0（规则基础）或 qpkri（PKRI模型），默认: q0'
+    )
     
     args = parser.parse_args()
     
@@ -678,8 +689,17 @@ def main():
     eval_config = config.get('evaluation', {})
     
     # 解析参数
+    knowledge_source = args.knowledge_source or eval_config.get('knowledge_source', 'q0')
     baseline_file = args.baseline_file or eval_config.get('baseline_file', 'output/test_with_uncertainty.jsonl')
-    q0_file = args.q0_file or eval_config.get('q0_file', 'data/q0_test.jsonl')
+    
+    # 根据知识源选择默认文件
+    if knowledge_source == 'qpkri':
+        default_knowledge_file = eval_config.get('qpkri_file', 'data/qpkri_test.jsonl')
+        knowledge_file = args.q0_file or default_knowledge_file
+    else:
+        default_knowledge_file = eval_config.get('q0_file', 'data/q0_test.jsonl')
+        knowledge_file = args.q0_file or default_knowledge_file
+    
     alpha_lut_file = args.alpha_lut_file or eval_config.get('alpha_lut_file', 'output/alpha_u_lut.json')
     fixed_alpha = args.fixed_alpha if args.fixed_alpha is not None else eval_config.get('fixed_alpha', 0.5)
     hard_file = args.hard_file or eval_config.get('hard_file')
@@ -687,11 +707,13 @@ def main():
     
     os.makedirs(output_dir, exist_ok=True)
     
+    knowledge_name = 'q_PKRI' if knowledge_source == 'qpkri' else 'q₀'
     logger.info("=" * 60)
     logger.info("EMG 效果验证")
     logger.info("=" * 60)
+    logger.info(f"知识源: {knowledge_name} ({knowledge_source})")
     logger.info(f"Baseline 文件: {baseline_file}")
-    logger.info(f"q₀ 文件: {q0_file}")
+    logger.info(f"{knowledge_name} 文件: {knowledge_file}")
     logger.info(f"α(u) 查表文件: {alpha_lut_file}")
     logger.info(f"固定 α 值: {fixed_alpha}")
     logger.info(f"输出目录: {output_dir}")
@@ -703,9 +725,10 @@ def main():
         logger.error("无法加载 baseline 预测结果")
         return 1
     
-    q0_dict = load_q0_posteriors(q0_file)
-    if len(q0_dict) == 0:
-        logger.error("无法加载 q₀ 后验")
+    # 根据知识源加载对应的后验文件
+    knowledge_dict = load_knowledge_posteriors(knowledge_file, field_name=knowledge_source)
+    if len(knowledge_dict) == 0:
+        logger.error(f"无法加载 {knowledge_name} 后验")
         return 1
     
     alpha_lut = load_alpha_u_lut(alpha_lut_file)
@@ -736,17 +759,17 @@ def main():
     
     # 1. Baseline
     metrics_dict['baseline'] = evaluate_method(
-        baseline_results, q0_dict, 'baseline'
+        baseline_results, knowledge_dict, 'baseline'
     )
     
     # 2. 固定 α 融合
     metrics_dict[f'fixed_alpha_{fixed_alpha}'] = evaluate_method(
-        baseline_results, q0_dict, 'fixed_alpha', fixed_alpha=fixed_alpha
+        baseline_results, knowledge_dict, 'fixed_alpha', fixed_alpha=fixed_alpha
     )
     
     # 3. EMG（可能带门控）
     metrics_dict['emg'] = evaluate_method(
-        baseline_results, q0_dict, 'emg', 
+        baseline_results, knowledge_dict, 'emg', 
         alpha_lut=alpha_lut,
         knowledge_threshold=knowledge_threshold,
         use_consistency_gating=args.use_consistency_gating
@@ -754,7 +777,7 @@ def main():
     
     # 4. 按不确定性切片评估
     slice_results = evaluate_by_uncertainty_slices(
-        baseline_results, q0_dict, alpha_lut, thresholds=[0.1, 0.3],
+        baseline_results, knowledge_dict, alpha_lut, thresholds=[0.1, 0.3],
         knowledge_threshold=knowledge_threshold,
         use_consistency_gating=args.use_consistency_gating
     )
@@ -790,17 +813,17 @@ def main():
         logger.info("=" * 60)
         
         hard_baseline_results = load_baseline_predictions(hard_file)
-        hard_q0_dict = load_q0_posteriors(hard_q0_file)
+        hard_knowledge_dict = load_knowledge_posteriors(hard_q0_file, field_name=knowledge_source)
         
-        if len(hard_baseline_results) > 0 and len(hard_q0_dict) > 0:
+        if len(hard_baseline_results) > 0 and len(hard_knowledge_dict) > 0:
             hard_metrics_dict['baseline'] = evaluate_method(
-                hard_baseline_results, hard_q0_dict, 'baseline'
+                hard_baseline_results, hard_knowledge_dict, 'baseline'
             )
             hard_metrics_dict[f'fixed_alpha_{fixed_alpha}'] = evaluate_method(
-                hard_baseline_results, hard_q0_dict, 'fixed_alpha', fixed_alpha=fixed_alpha
+                hard_baseline_results, hard_knowledge_dict, 'fixed_alpha', fixed_alpha=fixed_alpha
             )
             hard_metrics_dict['emg'] = evaluate_method(
-                hard_baseline_results, hard_q0_dict, 'emg', alpha_lut=alpha_lut
+                hard_baseline_results, hard_knowledge_dict, 'emg', alpha_lut=alpha_lut
             )
     
     # 保存结果
@@ -820,7 +843,8 @@ def main():
     if slice_results:
         output_metrics['uncertainty_slices'] = slice_results
     
-    metrics_file = os.path.join(output_dir, 'metrics_emg.json')
+    # 根据知识源生成输出文件名
+    metrics_file = os.path.join(output_dir, f'metrics_emg_{knowledge_source}.json')
     with open(metrics_file, 'w', encoding='utf-8') as f:
         json.dump(output_metrics, f, indent=2, ensure_ascii=False)
     logger.info(f"✓ 指标已保存: {metrics_file}")
@@ -865,12 +889,12 @@ def main():
                             })
     
     comparison_df = pd.DataFrame(comparison_rows)
-    comparison_csv = os.path.join(output_dir, 'emg_comparison_table.csv')
+    comparison_csv = os.path.join(output_dir, f'emg_comparison_table_{knowledge_source}.csv')
     comparison_df.to_csv(comparison_csv, index=False, encoding='utf-8')
     logger.info(f"✓ 对比表格已保存: {comparison_csv}")
     
     # 绘制对比图表
-    chart_file = os.path.join(output_dir, 'emg_comparison_charts.png')
+    chart_file = os.path.join(output_dir, f'emg_comparison_charts_{knowledge_source}.png')
     plot_comparison(metrics_dict, chart_file)
     
     logger.info("")
