@@ -47,8 +47,9 @@ def generate_param_combinations(mode: str = 'fast') -> List[Dict[str, Any]]:
     
     Args:
         mode: 搜索模式
-            - 'fast': 简化搜索空间（12种组合，推荐）
-            - 'full': 完整搜索空间（384种组合，耗时）
+            - 'fast': 简化搜索空间（12种组合，快速验证）
+            - 'refined': 精细搜索（25种组合，围绕最优值细化）
+            - 'full': 完整搜索空间（384种组合，全面探索）
     
     Returns:
         参数组合列表
@@ -59,6 +60,13 @@ def generate_param_combinations(mode: str = 'fast') -> List[Dict[str, Any]]:
             'min_matches_for_sensitive': [1, 2],
             'max_sensitive_prob': [0.65, 0.75, 0.85],
             'base_sensitive_prob': [0.1, 0.15],
+        }
+    elif mode == 'refined':
+        # 精细搜索：围绕已找到的最优值，范围缩小但细粒度更高
+        param_grid = {
+            'min_matches_for_sensitive': [1],  # 固定为1（已确认最优）
+            'max_sensitive_prob': [0.80, 0.82, 0.85, 0.87, 0.90],  # 围绕0.85，步长0.02
+            'base_sensitive_prob': [0.12, 0.13, 0.15, 0.17, 0.18],  # 围绕0.15，步长0.01-0.02
         }
     else:  # mode == 'full'
         # 完整搜索空间
@@ -287,8 +295,8 @@ def main():
         '--mode',
         type=str,
         default='fast',
-        choices=['fast', 'full'],
-        help='搜索模式：fast（快速，12种组合）或 full（完整，384种组合）'
+        choices=['fast', 'refined', 'full'],
+        help='搜索模式：fast（快速，12种组合）、refined（精细，25种组合）或 full（完整，384种组合）'
     )
     parser.add_argument(
         '--output-dir',
