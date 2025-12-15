@@ -21,7 +21,6 @@ try:
         accuracy_score, precision_score, recall_score, f1_score,
         roc_auc_score, classification_report
     )
-    from sklearn.calibration import CalibratedClassifierCV
 except ImportError:
     print("❌ 需要安装 sklearn: pip install scikit-learn")
     sys.exit(1)
@@ -136,14 +135,42 @@ def train_pkri_model(
         logger.info("校准模型...")
         
         if calibration_method in ['temperature', 'platt']:
-            # 使用sklearn的CalibratedClassifierCV（内部使用Platt scaling）
-            # 注意：sklearn没有直接的temperature scaling，这里使用Platt作为近似
-            calibrated_model = CalibratedClassifierCV(
-                base_model,
-                method='sigmoid',  # Platt scaling
-                cv='prefit'  # 使用已训练的模型
-            )
-            calibrated_model.fit(X_val, y_val)
+            # 手动实现 Platt scaling（兼容所有 sklearn 版本）
+            # 在验证集上获取基础模型的预测概率
+            val_proba_uncalibrated = base_model.predict_proba(X_val)[:, 1]
+            
+            # 使用 LogisticRegression 在预测概率上训练 Platt scaling
+            # Platt scaling: sigmoid(ax + b)，其中 x 是未校准的概率
+            from sklearn.linear_model import LogisticRegression as PlattScaler
+            
+            # 将概率作为特征（需要reshape）
+            X_platt = val_proba_uncalibrated.reshape(-1, 1)
+            
+            # 训练 Platt scaler
+            platt_scaler = PlattScaler()
+            platt_scaler.fit(X_platt, y_val)
+            
+            # 创建包装类以保持与原始模型接口一致
+            class CalibratedModel:
+                def __init__(self, base_model, platt_scaler):
+                    self.base_model = base_model
+                    self.platt_scaler = platt_scaler
+                
+                def predict(self, X):
+                    # 预测类别
+                    return self.base_model.predict(X)
+                
+                def predict_proba(self, X):
+                    # 获取基础模型预测概率
+                    base_proba = self.base_model.predict_proba(X)
+                    # 对类别1的概率进行校准
+                    proba_1_uncalibrated = base_proba[:, 1].reshape(-1, 1)
+                    proba_1_calibrated = self.platt_scaler.predict_proba(proba_1_uncalibrated)[:, 1]
+                    # 重新构建概率数组
+                    proba_0_calibrated = 1.0 - proba_1_calibrated
+                    return np.column_stack([proba_0_calibrated, proba_1_calibrated])
+            
+            calibrated_model = CalibratedModel(base_model, platt_scaler)
         else:
             logger.warning(f"未知的校准方法: {calibration_method}，跳过校准")
         
