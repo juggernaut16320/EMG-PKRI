@@ -97,7 +97,7 @@ def predict_confidence(features, model):
 
 ---
 
-### P0-优化2：q_PKRI构建公式改进 ⭐⭐⭐
+### P0-优化2：q_PKRI构建公式改进 ⭐⭐⭐ ✅已实现
 
 **问题**：
 - 当前公式：`p_sensitive = base_prob + (max_prob - base_prob) × match_strength × confidence`
@@ -106,62 +106,63 @@ def predict_confidence(features, model):
 
 **当前代码**：
 ```python
-# scripts/pkri_train.py:298
+# scripts/pkri_train.py:298（旧版本）
 p_sensitive = base_prob + (max_prob - base_prob) * match_strength * confidence
 ```
 
-**优化方案**：
+**优化方案（已实现）**：
 
-**方案2a：基于q₀调整（推荐）**
-```python
-def build_qpkri_from_q0(q0_p_sensitive, confidence, alpha=0.7):
-    """
-    基于q₀构建q_PKRI，用可信度调整
-    
-    Args:
-        q0_p_sensitive: q₀的敏感概率
-        confidence: PKRI可信度
-        alpha: q₀权重（默认0.7）
-    
-    Returns:
-        q_pkri: [p_non_sensitive, p_sensitive]
-    """
-    # 将confidence从[0.5, 0.9]映射到[0.5, 1.3]（增强作用）
-    confidence_adjusted = 0.5 + (confidence - 0.5) * 2
-    
-    # 混合q₀和可信度
-    qpkri_p = q0_p_sensitive * (alpha + (1-alpha) * confidence_adjusted)
-    qpkri_p = np.clip(qpkri_p, 0.1, 0.9)  # 限制范围
-    
-    return [1.0 - qpkri_p, qpkri_p]
-```
+**方案2a：基于q₀调整（推荐）** ✅
+- 实现方式：`build_method='q0_based'`
+- 需要q₀文件：使用`--q0-file`参数指定
+- 公式：`qpkri_p = q0_p_sensitive × (alpha + (1-alpha) × confidence_adjusted)`
+- 优势：充分利用q₀的优势，可信度作为调整因子
 
-**方案2b：改进可信度加权（保持独立计算）**
-```python
-# 将乘积改为加权和
-p_sensitive = base_prob + (max_prob - base_prob) * (
-    match_strength * 0.7 + confidence * 0.3
-)
-```
+**方案2b：改进可信度加权（默认，推荐）** ✅
+- 实现方式：`build_method='improved_weighted'`（默认）
+- 公式：`p_sensitive = base_prob + (max_prob - base_prob) × (match_strength × 0.7 + confidence × 0.3)`
+- 优势：无需q₀文件，独立计算，避免双重衰减
 
-**方案2c：可信度作为偏移而非缩放**
-```python
-# confidence作为偏移，而不是缩放因子
-p_sensitive = base_prob + (max_prob - base_prob) * match_strength * (
-    confidence + 0.3  # 偏移，让概率提升
-)
+**方案2c：可信度作为偏移** ✅
+- 实现方式：`build_method='offset'`
+- 公式：`p_sensitive = base_prob + (max_prob - base_prob) × match_strength × (1.0 + offset)`
+- 优势：confidence作为偏移而非缩放
+
+**原始方法（保留用于对比）** ✅
+- 实现方式：`build_method='original'`
+- 保持原有逻辑
+
+**使用方法**：
+```bash
+# 方案2b（推荐，默认）
+python scripts/pkri_train.py \
+    --build-method improved_weighted \
+    --confidence-mapping tanh \
+    ...
+
+# 方案2a（需要q₀文件）
+python scripts/pkri_train.py \
+    --build-method q0_based \
+    --q0-file data/q0_train.jsonl \
+    --confidence-mapping tanh \
+    ...
+
+# 方案2c
+python scripts/pkri_train.py \
+    --build-method offset \
+    --confidence-mapping tanh \
+    ...
 ```
 
 **预期效果**：
-- q_PKRI概率分布更接近q₀
+- q_PKRI概率分布更接近q₀（方案2b/2c）或基于q₀（方案2a）
 - 高可信度时能充分利用知识
-- q_PKRI准确率提升至接近q₀
+- q_PKRI准确率提升至接近q₀（目标：>70%）
 
-**实施步骤**：
-1. 修改`scripts/pkri_train.py`的`build_qpkri`函数
-2. 如果使用方案2a，需要先加载q₀文件
-3. 重新生成q_PKRI文件
-4. 验证效果
+**实施状态**：✅ 已完成
+- 修改了`scripts/pkri_train.py`的`build_qpkri`函数
+- 添加了`--build-method`和`--q0-file`命令行参数
+- 支持四种构建方法选择
 
 ---
 

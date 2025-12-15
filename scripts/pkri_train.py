@@ -276,20 +276,51 @@ def build_qpkri(
     matches: Dict[str, List[str]],
     confidence: float,
     base_prob: float = 0.1,
-    max_prob: float = 0.75
+    max_prob: float = 0.75,
+    q0_p_sensitive: Optional[float] = None,
+    build_method: str = 'improved_weighted'
 ) -> List[float]:
     """
-    根据匹配结果和可信度构建q_PKRI
+    根据匹配结果和可信度构建q_PKRI（优化版本：支持多种构建方法）
     
     Args:
         matches: 词表匹配结果 {category: [matched_words]}
         confidence: PKRI预测的可信度（0-1）
         base_prob: 基础敏感概率
         max_prob: 最大敏感概率
+        q0_p_sensitive: q₀的敏感概率（方案2a需要）
+        build_method: 构建方法
+            - 'original': 原始方法（match_strength * confidence，过于保守）
+            - 'improved_weighted': 改进的可信度加权（方案2b，推荐）
+            - 'q0_based': 基于q₀调整（方案2a，需要q0_p_sensitive）
+            - 'offset': 可信度作为偏移（方案2c）
     
     Returns:
         q_pkri: [p_non_sensitive, p_sensitive]
     """
+    if build_method == 'q0_based':
+        # 方案2a：基于q₀调整（推荐，需要q₀作为基础）
+        if q0_p_sensitive is None:
+            logger.warning("方案2a需要q0_p_sensitive参数，回退到improved_weighted方法")
+            build_method = 'improved_weighted'
+        else:
+            # 将confidence从[0.5, 0.9]映射到[0.5, 1.3]（增强作用）
+            # confidence通常在0.5-0.9范围，映射到0.5-1.3
+            confidence_min = 0.5
+            confidence_max = 0.9
+            confidence_adjusted = 0.5 + (confidence - confidence_min) * (1.3 - 0.5) / (confidence_max - confidence_min)
+            confidence_adjusted = np.clip(confidence_adjusted, 0.5, 1.3)
+            
+            # 混合q₀和可信度（alpha=0.7表示更依赖q₀）
+            alpha = 0.7
+            qpkri_p = q0_p_sensitive * (alpha + (1 - alpha) * confidence_adjusted)
+            qpkri_p = np.clip(qpkri_p, 0.1, 0.9)  # 限制范围
+            
+            p_sensitive = float(qpkri_p)
+            p_non_sensitive = 1.0 - p_sensitive
+            return [p_non_sensitive, p_sensitive]
+    
+    # 以下方法需要计算match_strength
     # 计算匹配强度（类似q₀的逻辑）
     porn_count = len(matches.get('porn', []))
     politics_count = len(matches.get('politics', []))
@@ -317,10 +348,24 @@ def build_qpkri(
         # 基础匹配强度
         match_strength = (normalized_score + 1) / 2
         
-        # 应用可信度加权
-        # confidence高时，更信任匹配结果
-        # confidence低时，更接近基础概率
-        p_sensitive = base_prob + (max_prob - base_prob) * match_strength * confidence
+        # 根据构建方法计算p_sensitive
+        if build_method == 'original':
+            # 原始方法：match_strength * confidence（过于保守）
+            p_sensitive = base_prob + (max_prob - base_prob) * match_strength * confidence
+        elif build_method == 'improved_weighted':
+            # 方案2b：改进的可信度加权（加权和而非乘积）
+            # match_strength权重0.7，confidence权重0.3
+            weighted_score = match_strength * 0.7 + confidence * 0.3
+            p_sensitive = base_prob + (max_prob - base_prob) * weighted_score
+        elif build_method == 'offset':
+            # 方案2c：可信度作为偏移而非缩放
+            # confidence作为偏移，让概率提升
+            offset = (confidence - 0.5) * 0.5  # confidence从0.5-1.0映射到0-0.25偏移
+            p_sensitive = base_prob + (max_prob - base_prob) * match_strength * (1.0 + offset)
+        else:
+            logger.warning(f"未知的构建方法: {build_method}，使用improved_weighted方法")
+            weighted_score = match_strength * 0.7 + confidence * 0.3
+            p_sensitive = base_prob + (max_prob - base_prob) * weighted_score
     
     # 确保概率在[0, 1]范围内
     p_sensitive = max(0.0, min(1.0, p_sensitive))
@@ -335,7 +380,9 @@ def generate_qpkri_for_dataset(
     model: object,
     output_file: str,
     feature_cols: List[str],
-    confidence_mapping: str = 'tanh'
+    confidence_mapping: str = 'tanh',
+    build_method: str = 'improved_weighted',
+    q0_file: Optional[str] = None
 ):
     """
     为数据集生成q_PKRI
@@ -346,6 +393,9 @@ def generate_qpkri_for_dataset(
         model: 训练好的模型
         output_file: 输出q_PKRI文件路径
         feature_cols: 特征列名列表
+        confidence_mapping: 可信度映射方法（'tanh', 'piecewise', 'raw'）
+        build_method: q_PKRI构建方法（'original', 'improved_weighted', 'q0_based', 'offset'）
+        q0_file: q₀文件路径（build_method='q0_based'时需要）
     """
     logger.info("=" * 60)
     logger.info("生成q_PKRI后验")
@@ -353,7 +403,31 @@ def generate_qpkri_for_dataset(
     logger.info(f"特征文件: {feature_file}")
     logger.info(f"数据集文件: {dataset_file}")
     logger.info(f"输出文件: {output_file}")
+    logger.info(f"构建方法: {build_method}")
+    logger.info(f"可信度映射: {confidence_mapping}")
     logger.info("")
+    
+    # 如果使用q0_based方法，加载q₀文件
+    q0_dict = {}
+    if build_method == 'q0_based':
+        if q0_file is None:
+            logger.error("❌ 使用q0_based方法需要指定--q0-file参数")
+            raise ValueError("q0_file is required when build_method='q0_based'")
+        logger.info(f"加载q₀文件: {q0_file}")
+        with open(q0_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                    item_id = item.get('id')
+                    if item_id and 'q0' in item:
+                        q0_dict[item_id] = item['q0'][1]  # 只保存p_sensitive
+                except json.JSONDecodeError:
+                    continue
+        logger.info(f"✓ 加载 {len(q0_dict)} 条q₀后验")
+        logger.info("")
     
     # 加载特征
     X, _, _ = load_features(feature_file)
@@ -411,8 +485,23 @@ def generate_qpkri_for_dataset(
         # 重新匹配（获取matches）
         matches = match_lexicon(text, lexicons, automaton_cache)
         
+        # 获取q₀的敏感概率（如果需要）
+        q0_p_sensitive = None
+        actual_build_method = build_method
+        if build_method == 'q0_based':
+            if item_id in q0_dict:
+                q0_p_sensitive = q0_dict[item_id]
+            else:
+                logger.warning(f"样本 {item_id} 在q₀文件中不存在，使用improved_weighted方法")
+                actual_build_method = 'improved_weighted'
+        
         # 构建q_PKRI
-        qpkri = build_qpkri(matches, confidence)
+        qpkri = build_qpkri(
+            matches, 
+            confidence,
+            q0_p_sensitive=q0_p_sensitive,
+            build_method=actual_build_method
+        )
         
         # 构建输出项
         qpkri_item = {
@@ -489,6 +578,11 @@ def main():
     parser.add_argument('--confidence-mapping', type=str, default='tanh',
                        choices=['tanh', 'piecewise', 'raw'],
                        help='可信度映射方法：tanh（推荐）、piecewise、raw')
+    parser.add_argument('--build-method', type=str, default='improved_weighted',
+                       choices=['original', 'improved_weighted', 'q0_based', 'offset'],
+                       help='q_PKRI构建方法：improved_weighted（推荐）、q0_based、original、offset')
+    parser.add_argument('--q0-file', type=str, default=None,
+                       help='q0文件路径（build-method=q0_based时需要，格式：data/q0_{dataset}.jsonl）')
     
     args = parser.parse_args()
     
@@ -541,13 +635,29 @@ def main():
     for dataset_name, feature_file, dataset_file, output_filename in datasets:
         logger.info("")
         output_file = os.path.join(args.output_qpkri_dir, output_filename)
+        
+        # 如果使用q0_based方法，需要根据dataset_name确定q0_file
+        q0_file_for_dataset = None
+        if args.build_method == 'q0_based':
+            if args.q0_file:
+                # 如果指定了q0_file，直接使用
+                q0_file_for_dataset = args.q0_file
+            else:
+                # 否则根据dataset_name推断（如train -> q0_train.jsonl）
+                q0_file_for_dataset = os.path.join('data', f'q0_{dataset_name}.jsonl')
+                if not os.path.exists(q0_file_for_dataset):
+                    logger.error(f"❌ q₀文件不存在: {q0_file_for_dataset}，请使用--q0-file指定")
+                    raise FileNotFoundError(f"q₀ file not found: {q0_file_for_dataset}")
+        
         generate_qpkri_for_dataset(
             feature_file,
             dataset_file,
             model,
             output_file,
             feature_cols,
-            confidence_mapping=args.confidence_mapping
+            confidence_mapping=args.confidence_mapping,
+            build_method=args.build_method,
+            q0_file=q0_file_for_dataset
         )
     
     # 保存评估指标
