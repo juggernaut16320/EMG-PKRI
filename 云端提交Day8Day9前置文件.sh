@@ -9,6 +9,17 @@ echo ""
 
 cd /mnt/workspace/EMG-PKRI
 
+# 配置Git用户信息（如果没有配置）
+if [ -z "$(git config user.email)" ]; then
+    echo "配置Git用户信息..."
+    git config user.email "dsw@cloud.com"
+    git config user.name "DSW User"
+fi
+
+# 先拉取远程更新（避免冲突）
+echo "拉取远程更新..."
+git pull origin main --no-edit || echo "拉取失败，继续..."
+
 # 检查文件是否存在
 echo "检查文件..."
 echo "----------------------------------------"
