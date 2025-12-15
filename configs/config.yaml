@@ -117,7 +117,7 @@ q0:
   abuse_weight: 0.5                # 辱骂类别权重（从0.6降低到0.5，减少误报）
   base_sensitive_prob: 0.1         # 基础敏感概率（无匹配时）
   max_sensitive_prob: 0.75         # 最大敏感概率（从0.95降低到0.75，减少过度敏感）
-  min_matches_for_sensitive: 2     # 触发敏感的最小匹配数（从1提高到2，减少单词误匹配）
+  min_matches_for_sensitive: 1     # 触发敏感的最小匹配数（词表优化后从2降低到1，提高召回率）
   include_details: true            # 是否包含匹配详情
 
 # EMG 分桶 α 搜索配置（Day7）
