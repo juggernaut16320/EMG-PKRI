@@ -192,28 +192,43 @@ ls -lh output/alpha_u_lut.json
 ```bash
 python scripts/eval_emg.py \
     --baseline-file data/test_with_uncertainty.jsonl \
-    --knowledge-file data/q0_test.jsonl \
-    --alpha-u-file output/alpha_u_lut.json \
-    --output-metrics output/metrics_emg_q0.json \
-    --output-table output/emg_comparison_q0.csv \
+    --q0-file data/q0_test.jsonl \
+    --alpha-lut-file output/alpha_u_lut.json \
     --knowledge-source q0 \
     --use-consistency-gating \
-    --knowledge-threshold-file output/knowledge_threshold.json
+    --knowledge-threshold-file output/knowledge_threshold.json \
+    --output-dir output
 ```
+
+**输出文件**：
+- `output/metrics_emg_q0.json`
+- `output/emg_comparison_table_q0.csv`
+- `output/emg_comparison_charts_q0.png`
 
 ### 步骤3：使用q_PKRI运行EMG评估
 
 ```bash
 python scripts/eval_emg.py \
     --baseline-file data/test_with_uncertainty.jsonl \
-    --knowledge-file data/qpkri_test.jsonl \
-    --alpha-u-file output/alpha_u_lut.json \
-    --output-metrics output/metrics_emg_qpkri.json \
-    --output-table output/emg_comparison_qpkri.csv \
+    --q0-file data/qpkri_test.jsonl \
+    --alpha-lut-file output/alpha_u_lut.json \
     --knowledge-source qpkri \
     --use-consistency-gating \
-    --knowledge-threshold-file output/knowledge_threshold.json
+    --knowledge-threshold-file output/knowledge_threshold.json \
+    --output-dir output
 ```
+
+**输出文件**：
+- `output/metrics_emg_qpkri.json`
+- `output/emg_comparison_table_qpkri.csv`
+- `output/emg_comparison_charts_qpkri.png`
+
+**注意**：
+- `--q0-file` 参数现在可以接受 q₀ 或 q_PKRI 文件路径
+- `--knowledge-source` 参数指定知识源类型，会自动选择默认文件路径
+- 如果不指定 `--q0-file`，会根据 `--knowledge-source` 自动选择默认路径：
+  - `q0` → `data/q0_test.jsonl`
+  - `qpkri` → `data/qpkri_test.jsonl`
 
 ### 步骤4：对比分析（可选脚本）
 
