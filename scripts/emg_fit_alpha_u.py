@@ -19,10 +19,17 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 try:
-    from scipy.stats import isotonic_regression
-    HAS_SCIPY = True
+    import scipy
+    try:
+        from scipy.stats import isotonic_regression
+        HAS_SCIPY_ISOTONIC = True
+    except (ImportError, AttributeError):
+        # 某些scipy版本中isotonic_regression可能不存在或位置不同
+        HAS_SCIPY_ISOTONIC = False
+    HAS_SCIPY = True  # scipy本身已安装
 except ImportError:
     HAS_SCIPY = False
+    HAS_SCIPY_ISOTONIC = False
 
 try:
     import matplotlib
@@ -126,7 +133,7 @@ def fit_alpha_u(
     # 执行保序回归
     # 由于我们需要单调递减（u增大，α减小），而PAV默认是单调递增
     # 方法：对 -alpha 做单调递增回归，然后取负
-    if use_scipy and HAS_SCIPY:
+    if use_scipy and HAS_SCIPY and HAS_SCIPY_ISOTONIC:
         try:
             alpha_neg = -alpha_sorted
             alpha_fitted_neg = isotonic_regression(alpha_neg, y_min=None, y_max=None, increasing=True)
@@ -134,7 +141,7 @@ def fit_alpha_u(
             
             logger.info("✓ 使用 scipy.stats.isotonic_regression 完成拟合（单调递减）")
         except Exception as e:
-            logger.warning(f"scipy 拟合失败: {e}，使用自定义实现")
+            logger.warning(f"scipy isotonic_regression 调用失败: {e}，使用自定义实现")
             # 对 -alpha 做单调递增回归
             alpha_neg = -alpha_sorted
             alpha_fitted_neg = pav_regression(alpha_neg)
@@ -142,6 +149,8 @@ def fit_alpha_u(
     else:
         if not HAS_SCIPY:
             logger.info("未安装 scipy，使用自定义 PAV 实现")
+        elif not HAS_SCIPY_ISOTONIC:
+            logger.info("scipy.stats.isotonic_regression 不可用，使用自定义 PAV 实现")
         # 对 -alpha 做单调递增回归
         alpha_neg = -alpha_sorted
         alpha_fitted_neg = pav_regression(alpha_neg)
