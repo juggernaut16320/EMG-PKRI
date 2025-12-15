@@ -33,6 +33,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# 定义校准模型包装类（必须在模块级别，以便pickle序列化）
+class CalibratedModel:
+    """Platt scaling校准模型包装类"""
+    
+    def __init__(self, base_model, platt_scaler):
+        self.base_model = base_model
+        self.platt_scaler = platt_scaler
+    
+    def predict(self, X):
+        """预测类别（使用校准后的概率）"""
+        proba = self.predict_proba(X)
+        return (proba[:, 1] >= 0.5).astype(int)
+    
+    def predict_proba(self, X):
+        """预测概率（校准后）"""
+        # 获取基础模型预测概率
+        base_proba = self.base_model.predict_proba(X)
+        # 对类别1的概率进行校准
+        proba_1_uncalibrated = base_proba[:, 1].reshape(-1, 1)
+        proba_1_calibrated = self.platt_scaler.predict_proba(proba_1_uncalibrated)[:, 1]
+        # 重新构建概率数组
+        proba_0_calibrated = 1.0 - proba_1_calibrated
+        return np.column_stack([proba_0_calibrated, proba_1_calibrated])
+
+
 def load_features(feature_file: str) -> Tuple[pd.DataFrame, Optional[pd.Series], List[str]]:
     """
     加载特征文件
@@ -150,26 +175,7 @@ def train_pkri_model(
             platt_scaler = PlattScaler()
             platt_scaler.fit(X_platt, y_val)
             
-            # 创建包装类以保持与原始模型接口一致
-            class CalibratedModel:
-                def __init__(self, base_model, platt_scaler):
-                    self.base_model = base_model
-                    self.platt_scaler = platt_scaler
-                
-                def predict(self, X):
-                    # 预测类别
-                    return self.base_model.predict(X)
-                
-                def predict_proba(self, X):
-                    # 获取基础模型预测概率
-                    base_proba = self.base_model.predict_proba(X)
-                    # 对类别1的概率进行校准
-                    proba_1_uncalibrated = base_proba[:, 1].reshape(-1, 1)
-                    proba_1_calibrated = self.platt_scaler.predict_proba(proba_1_uncalibrated)[:, 1]
-                    # 重新构建概率数组
-                    proba_0_calibrated = 1.0 - proba_1_calibrated
-                    return np.column_stack([proba_0_calibrated, proba_1_calibrated])
-            
+            # 创建校准模型（使用模块级别的类，以便pickle序列化）
             calibrated_model = CalibratedModel(base_model, platt_scaler)
         else:
             logger.warning(f"未知的校准方法: {calibration_method}，跳过校准")
