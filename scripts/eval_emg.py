@@ -368,7 +368,9 @@ def evaluate_by_uncertainty_slices(
     baseline_results: Dict[str, Dict],
     q0_dict: Dict[str, List[float]],
     alpha_lut: Dict[str, List[float]],
-    thresholds: List[float] = [0.1, 0.3]
+    thresholds: List[float] = [0.1, 0.3],
+    knowledge_threshold: Optional[float] = None,
+    use_consistency_gating: bool = False
 ) -> Dict:
     """
     按不确定性切片评估 EMG 效果
@@ -381,6 +383,8 @@ def evaluate_by_uncertainty_slices(
             - u < 0.1: 低不确定性
             - 0.1 ≤ u < 0.3: 中等不确定性
             - u ≥ 0.3: 高不确定性
+        knowledge_threshold: 知识阈值（可选）
+        use_consistency_gating: 是否使用一致性门控
     
     Returns:
         切片评估结果字典
