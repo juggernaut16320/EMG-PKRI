@@ -311,8 +311,8 @@ def evaluate_method(
             # 优先级2: 一致性门控
             if use_consistency_gating:
                 if np.argmax(p) != np.argmax(q0):
-                    # 预测不一致，强制使用小alpha（或0）
-                    alpha = 0.0
+                    # 预测不一致，不信任q₀，完全信任模型
+                    alpha = 1.0
             
             p_final = compute_emg_fusion(p, q0, alpha)
         else:
