@@ -4,6 +4,32 @@
 
 ---
 
+## ⚠️ 如果遇到 Git 冲突
+
+### 问题：本地有未提交的修改或未跟踪的文件
+
+**解决方法**：
+
+```bash
+cd /mnt/workspace/EMG-PKRI
+source venv/bin/activate
+
+# 方法1：暂存本地修改（推荐，保留本地文件）
+git stash
+
+# 或者方法2：删除冲突的未跟踪文件（如果确定不需要）
+rm -f verify_day7_day8_output.sh
+rm -f output/alpha_u_curve.png output/alpha_u_lut.json output/bucket_alpha_star.csv
+
+# 然后重新拉取
+git pull origin main
+
+# 如果使用了stash，可以恢复本地修改（如果需要）
+# git stash pop
+```
+
+---
+
 ## 📋 前置文件检查
 
 在运行之前，确保以下文件存在：
@@ -64,7 +90,6 @@ EOF
 ```bash
 cd /mnt/workspace/EMG-PKRI
 source venv/bin/activate
-git pull origin main
 
 # 搜索最优知识阈值（在dev集上）
 python scripts/search_knowledge_threshold.py \
@@ -198,7 +223,21 @@ EOF
 
 ## 🔧 如果遇到问题
 
-### 问题1：文件不存在
+### 问题1：Git 冲突
+
+```bash
+# 删除冲突的未跟踪文件（如果确定不需要）
+rm -f verify_day7_day8_output.sh
+rm -f output/alpha_u_curve.png output/alpha_u_lut.json output/bucket_alpha_star.csv
+
+# 或者暂存本地修改
+git stash
+
+# 重新拉取
+git pull origin main
+```
+
+### 问题2：文件不存在
 ```bash
 # 如果 dev_with_uncertainty.jsonl 不存在
 python scripts/uncertainty_analysis.py \
@@ -207,11 +246,11 @@ python scripts/uncertainty_analysis.py \
     --base-model /mnt/workspace/models/qwen/Qwen3-1___7B
 ```
 
-### 问题2：知识阈值搜索失败
+### 问题3：知识阈值搜索失败
 - 检查dev集和q₀文件是否匹配（ID对应）
 - 检查alpha_lut文件是否正确加载
 
-### 问题3：门控效果不明显
+### 问题4：门控效果不明显
 - 可以尝试不同的优化指标（f1 vs nll）
 - 可以尝试更细的阈值网格
 
@@ -223,4 +262,3 @@ python scripts/uncertainty_analysis.py \
 1. **如果效果显著**：更新文档，记录改进效果
 2. **如果效果不明显**：分析原因，考虑进一步优化
 3. **如果需要调整**：修改阈值网格或门控逻辑
-
