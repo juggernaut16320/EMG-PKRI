@@ -166,7 +166,8 @@ def load_uncertainty_buckets(buckets_file: str) -> pd.DataFrame:
     logger.info(f"加载不确定性分桶信息: {buckets_file}")
     
     if not os.path.exists(buckets_file):
-        logger.error(f"文件不存在: {buckets_file}")
+        logger.warning(f"文件不存在: {buckets_file}")
+        logger.info("将尝试从 baseline 结果自动生成分桶信息...")
         return pd.DataFrame()
     
     try:
@@ -176,6 +177,65 @@ def load_uncertainty_buckets(buckets_file: str) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"加载分桶信息失败: {e}")
         return pd.DataFrame()
+
+
+def generate_buckets_from_results(baseline_results: Dict[str, Dict], n_buckets: int = 10) -> pd.DataFrame:
+    """
+    从 baseline 结果自动生成分桶信息
+    
+    Args:
+        baseline_results: baseline 预测结果
+        n_buckets: 分桶数量
+    
+    Returns:
+        DataFrame，包含 bucket_id, u_min, u_max, u_mean 等
+    """
+    logger.info(f"从 baseline 结果自动生成 {n_buckets} 个分桶...")
+    
+    # 提取不确定性值
+    uncertainties = []
+    for result in baseline_results.values():
+        if 'uncertainty' in result:
+            uncertainties.append(result['uncertainty'])
+    
+    if len(uncertainties) == 0:
+        logger.error("无法从 baseline 结果中提取不确定性值")
+        return pd.DataFrame()
+    
+    uncertainties = np.array(uncertainties)
+    
+    # 分桶（等宽分桶）
+    bucket_edges = np.linspace(0, 1, n_buckets + 1)
+    bucket_stats = []
+    
+    for i in range(n_buckets):
+        u_min = bucket_edges[i]
+        u_max = bucket_edges[i + 1]
+        
+        # 找到落在当前桶的样本
+        if i == n_buckets - 1:
+            mask = (uncertainties >= u_min) & (uncertainties <= u_max)
+        else:
+            mask = (uncertainties >= u_min) & (uncertainties < u_max)
+        
+        bucket_uncertainties = uncertainties[mask]
+        
+        if len(bucket_uncertainties) == 0:
+            continue
+        
+        bucket_stats.append({
+            'bucket_id': i,
+            'u_min': float(u_min),
+            'u_max': float(u_max),
+            'u_mean': float(np.mean(bucket_uncertainties)),
+            'u_median': float(np.median(bucket_uncertainties)),
+            'n_samples': int(np.sum(mask)),
+        })
+    
+    df = pd.DataFrame(bucket_stats)
+    logger.info(f"✓ 自动生成 {len(df)} 个有效 bucket")
+    
+    return df
 
 
 def compute_emg_fusion(
@@ -493,8 +553,13 @@ def main():
     
     bucket_df = load_uncertainty_buckets(uncertainty_file)
     if len(bucket_df) == 0:
-        logger.error("无法加载不确定性分桶信息")
-        return 1
+        # 尝试自动生成分桶信息
+        logger.info("尝试从 baseline 结果自动生成分桶信息...")
+        bucket_df = generate_buckets_from_results(baseline_results, n_buckets=10)
+        if len(bucket_df) == 0:
+            logger.error("无法加载或生成不确定性分桶信息")
+            logger.error("提示：请先运行 uncertainty_analysis.py 生成 uncertainty_buckets.csv，或确保 dev_file 包含 uncertainty 字段")
+            return 1
     
     # 检查样本 ID 匹配
     baseline_ids = set(baseline_results.keys())

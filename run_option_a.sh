@@ -40,7 +40,7 @@ echo ""
 echo "步骤4/5: 重新运行Day8（α(u)拟合）..."
 echo "----------------------------------------"
 python scripts/emg_fit_alpha_u.py \
-    --bucket-alpha-file output/bucket_alpha_star.csv \
+    --input-file output/bucket_alpha_star.csv \
     --output-dir output
 echo "✓ Day8 α(u)拟合完成"
 echo ""

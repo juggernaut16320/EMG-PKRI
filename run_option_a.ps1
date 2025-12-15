@@ -49,7 +49,7 @@ Write-Host ""
 Write-Host "步骤4/5: 重新运行Day8（α(u)拟合）..." -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor Gray
 python scripts/emg_fit_alpha_u.py `
-    --bucket-alpha-file output/bucket_alpha_star.csv `
+    --input-file output/bucket_alpha_star.csv `
     --output-dir output
 if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Day8 α(u)拟合失败" -ForegroundColor Red
